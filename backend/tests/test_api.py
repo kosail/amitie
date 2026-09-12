@@ -145,6 +145,47 @@ class ApiTest(unittest.TestCase):
         with TestClient(self._app()) as client:
             self.assertEqual(client.get("/healthz").json(), {"status": "ok"})
 
+    def test_app_starts_without_llm_keys(self) -> None:
+        app = create_app(settings=Settings(database_path=self.db_path))
+        with TestClient(app) as client:
+            self.assertEqual(client.get("/healthz").json(), {"status": "ok"})
+            self.assertEqual(client.get("/openapi.json").status_code, 200)
+
+    def test_openapi_frozen_contract(self) -> None:
+        from api.openapi import FROZEN_OPENAPI_PATHS
+
+        with TestClient(self._app()) as client:
+            landing = client.get("/")
+            self.assertEqual(landing.status_code, 200)
+            self.assertEqual(landing.json()["openapi"], "/openapi.json")
+
+            docs = client.get("/docs")
+            self.assertEqual(docs.status_code, 200)
+            self.assertIn("text/html", docs.headers.get("content-type", ""))
+
+            spec = client.get("/openapi.json")
+            self.assertEqual(spec.status_code, 200)
+            body = spec.json()
+            self.assertEqual(body["info"]["title"], "La Mesa API")
+            paths = body["paths"]
+            for path in FROZEN_OPENAPI_PATHS:
+                self.assertIn(path, paths, path)
+
+    def test_openapi_exporter(self) -> None:
+        import json
+        from api.openapi import export_openapi, generate_openapi_spec, FROZEN_OPENAPI_PATHS
+
+        spec = generate_openapi_spec()
+        self.assertEqual(spec["info"]["title"], "La Mesa API")
+        for path in FROZEN_OPENAPI_PATHS:
+            self.assertIn(path, spec["paths"], path)
+
+        out_file = Path(self._tmp.name) / "exported_openapi.json"
+        rendered = export_openapi(output_path=out_file)
+        self.assertTrue(out_file.is_file())
+        parsed = json.loads(rendered)
+        self.assertEqual(parsed["info"]["title"], "La Mesa API")
+
 
 if __name__ == "__main__":
     unittest.main()

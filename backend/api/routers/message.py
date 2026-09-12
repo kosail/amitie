@@ -9,18 +9,41 @@ from db.port import DatabasePort
 from mcp_servers.toolbox import Toolbox
 
 from ..dependencies import get_agent_service, get_database, get_toolbox, now_iso
-from ..schemas import AgentResponse, MessageRequest
+from ..schemas import AgentResponse, HttpErrorDetail, MessageRequest
 
 router = APIRouter(prefix="/api", tags=["message"])
 
 
-@router.post("/message", response_model=AgentResponse)
+@router.post(
+    "/message",
+    response_model=AgentResponse,
+    summary="Send user utterance to agent (REQ-API-02)",
+    response_description="Generated A2UI interface, assistant response text, and optional audio stream reference",
+    operation_id="post_message",
+    responses={
+        200: {
+            "description": "Agent turn executed successfully; returns complete A2UI message array.",
+            "model": AgentResponse,
+        },
+        404: {
+            "description": "Session not found in the database.",
+            "model": HttpErrorDetail,
+        },
+    },
+)
 async def post_message(
     payload: MessageRequest,
     database: DatabasePort = Depends(get_database),
     toolbox: Toolbox = Depends(get_toolbox),
     agent: AgentService = Depends(get_agent_service),
 ) -> AgentResponse:
+    """Send user text or base64 audio to the AI agent orchestrator (REQ-API-02).
+
+    - If `audio_b64` is provided without `text`, audio is transcribed first via the `voice` MCP server.
+    - The agent processes the utterance, queries financial tools via MCP, and generates a new A2UI interface.
+    - If accessibility is enabled for this persona, `amitie.voz_color.v1` is generated with pre-warmed TTS audio (REQ-ACC-01).
+    - Every response returns the complete A2UI message array over HTTP (INV-010).
+    """
     session = await database.fetch_one(
         "SELECT id, user_id FROM sessions WHERE id = ?", (payload.session_id,)
     )

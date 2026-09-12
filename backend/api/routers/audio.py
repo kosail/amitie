@@ -10,14 +10,31 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from mcp_servers.toolbox import Toolbox
 
 from ..dependencies import get_toolbox
+from ..schemas import HttpErrorDetail
 
 router = APIRouter(prefix="/api", tags=["audio"])
 
 
-@router.get("/audio/{asset_id}")
+@router.get(
+    "/audio/{asset_id}",
+    summary="Fetch cached TTS audio asset (REQ-API-07)",
+    response_description="Raw audio stream (e.g. audio/mpeg)",
+    operation_id="get_audio",
+    responses={
+        200: {
+            "content": {"audio/mpeg": {}},
+            "description": "Binary audio stream returned with public caching headers.",
+        },
+        404: {
+            "description": "Audio asset not found or missing from cache.",
+            "model": HttpErrorDetail,
+        },
+    },
+)
 async def get_audio(
     asset_id: str, toolbox: Toolbox = Depends(get_toolbox)
 ) -> Response:
+    """Fetch pre-warmed or dynamically synthesized TTS audio bytes (REQ-API-07, REQ-ACC-03)."""
     meta = await toolbox.call("get_audio", {"asset_id": asset_id})
     if meta.get("status") != "ok":
         raise HTTPException(status_code=404, detail="unknown audio asset")

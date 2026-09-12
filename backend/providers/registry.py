@@ -2,14 +2,25 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import replace
 
 from config import Settings
 
 from .base import LLMProvider
-from .gateway import FallbackLLM
+from .gateway import FallbackLLM, NullLLM
 from .research import FallbackResearch, ResearchProvider, StaticPriceTableResearch
 from .voice import FallbackSTT, FallbackTTS, NullSTT, NullTTS, STTProvider, TTSProvider
+
+logger = logging.getLogger(__name__)
+
+
+def _llm_configured(settings: Settings, name: str) -> bool:
+    if name == "gemini":
+        return bool(settings.gemini_api_key)
+    if name == "deepseek":
+        return bool(settings.deepseek_api_key)
+    return True
 
 
 def build_llm(settings: Settings) -> LLMProvider:
@@ -31,9 +42,22 @@ def build_llm(settings: Settings) -> LLMProvider:
 
 
 def build_llm_gateway(settings: Settings, tracer: object | None = None) -> LLMProvider:
-    primary = build_llm(settings)
+    primary_name = settings.llm_provider
     fallback_name = settings.llm_fallback
-    if not fallback_name or fallback_name == settings.llm_provider:
+    if fallback_name == primary_name:
+        fallback_name = ""
+
+    if not _llm_configured(settings, primary_name):
+        logger.warning("llm %s has no API key; skipping", primary_name)
+        if fallback_name and _llm_configured(settings, fallback_name):
+            return build_llm(replace(settings, llm_provider=fallback_name))
+        return NullLLM()
+
+    primary = build_llm(settings)
+    if not fallback_name:
+        return primary
+    if not _llm_configured(settings, fallback_name):
+        logger.warning("llm fallback %s has no API key; skipping", fallback_name)
         return primary
     fallback = build_llm(replace(settings, llm_provider=fallback_name))
     return FallbackLLM(

@@ -19,7 +19,8 @@ from providers.base import (
 )
 from providers.deepseek import DeepSeekLLM
 from providers.gateway import FallbackLLM
-from providers.registry import build_llm
+from providers.gateway import NullLLM
+from providers.registry import build_llm, build_llm_gateway
 
 try:  # optional: only needed for the Gemini construction test
     import google.genai  # noqa: F401
@@ -159,6 +160,18 @@ class RegistryTest(unittest.TestCase):
     def test_builds_gemini(self) -> None:
         provider = build_llm(Settings(llm_provider="gemini", gemini_api_key="test"))
         self.assertEqual(provider.name, "gemini")
+
+    def test_gateway_skips_unconfigured_primary(self) -> None:
+        provider = build_llm_gateway(
+            Settings(llm_provider="gemini", gemini_api_key="", deepseek_api_key="test")
+        )
+        self.assertEqual(provider.name, "deepseek")
+
+    def test_gateway_null_when_no_keys(self) -> None:
+        provider = build_llm_gateway(
+            Settings(llm_provider="gemini", gemini_api_key="", deepseek_api_key="")
+        )
+        self.assertIsInstance(provider, NullLLM)
 
 
 class _FakeFunctionCall:

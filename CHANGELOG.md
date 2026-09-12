@@ -349,3 +349,34 @@
 - rationale: The on-stage destructive test deletes an API key to prove the UI is generated in real time; silently re-serving the last saved surface would look staged and violate INV-004/INV-032. Returning a retryable error lets the frontend show an error screen and retry. The binding mismatch was a latent frontend-breaking bug the offline tests could not catch because the backend never resolves JSON pointers (INV-023: the frontend owns rendering).
 - impact: Full suite now 142 tests, all passing (net +3: removed the DEMO_MODE test, added provider-failure and binding-contract tests). `SPECS.md` now reflects reality (backend complete; tunnel, video, and live demo remain). No API version change: errors are still HTTP 200 with `status:"error"`.
 - follow_ups: Operational remains: live golden-path rehearsal, Cloudflare Tunnel, recorded video (REQ-DEMO-04), key rotation (INV-041).
+
+## [2026-09-12] change — FastAPI OpenAPI docs wired to the frozen REST contract
+- agent: Cursor Grok 4.6
+- requirements: REQ-API-01..08
+- invariants: INV-010, INV-011, INV-023
+- files: `backend/api/openapi.py`, `backend/api/app.py`, `backend/api/schemas.py`, `backend/api/routers/{session,message,action,ui,audio,negotiation,saving_bags,debug}.py`, `backend/tests/test_api.py`, `backend/README.md`
+- decision: Exposed FastAPI's OpenAPI surface explicitly (`/docs`, `/redoc`, `/openapi.json`) with tag descriptions, stable `operation_id`s, request examples, and a landing JSON at `/` that points at the spec. Added `test_openapi_frozen_contract` so the published schema keeps every `SPECS.md` §8 path.
+- rationale: The frontend (and any generated client) should consume the machine-readable contract FastAPI already produces, without calling LLM providers directly.
+- impact: Swagger Try-it-out and `openapi.json` now describe the frozen REST boundary. No route or payload shape change.
+- follow_ups: none
+
+## [2026-09-12] fix — FastAPI boots without GEMINI_API_KEY
+- agent: Cursor Grok 4.6
+- requirements: REQ-NFR-01, REQ-API-01..08
+- invariants: INV-012, INV-013
+- files: `backend/providers/{gateway,registry,__init__}.py`, `backend/tests/{test_providers,test_api}.py`, `backend/.env.example`, `.gitignore`, `backend/README.md`
+- decision: `build_llm_gateway` now skips Gemini (or DeepSeek) when the corresponding API key is empty, the same way research/TTS already degrade. If neither key is set, the process uses `NullLLM` so uvicorn can serve `/docs`, `/openapi.json`, and `/healthz`. Agent turns then raise `ProviderUnavailableError` instead of crashing startup. Restored `backend/.env.example` and un-ignored it (`!.env.example`) because `.env.*` had been hiding the template.
+- rationale: Requiring a Gemini key at lifespan construction made the HTTP/OpenAPI surface unusable for local docs and frontend wiring.
+- impact: `uvicorn api.main:app` starts from `backend/` with no `.env`. Live agent turns still need `GEMINI_API_KEY` or `DEEPSEEK_API_KEY`.
+- follow_ups: none
+
+## [2026-09-12] change — OpenAPI documentation enriched across all endpoints and export CLI added
+- agent: Antigravity
+- requirements: REQ-API-01..08, REQ-NFR-02, REQ-KT-01, REQ-ACC-03, REQ-ACC-04
+- invariants: INV-010, INV-011, INV-023
+- files: `backend/api/schemas.py`, `backend/api/openapi.py`, `backend/api/app.py`, `backend/api/routers/{session,message,action,ui,saving_bags,negotiation,audio,debug}.py`, `backend/tests/test_api.py`
+- decision: Enriched the OpenAPI schema with comprehensive Markdown descriptions, response models, status codes (200, 404, etc.), error payload schema (`HttpErrorDetail`), and field-level descriptions and examples across all models in `api/schemas.py`. Added `generate_openapi_spec()` and `export_openapi()` with a CLI entrypoint in `api/openapi.py` (`python -m api.openapi --out openapi.json`). Added unit test `test_openapi_exporter` to ensure spec validity and frozen route coverage.
+- rationale: Provide the frontend team and automated tooling with high-fidelity, machine-readable documentation and a single-command export mechanism for code generation and API testing.
+- impact: 147 tests passing. Swagger UI (`/docs`), ReDoc (`/redoc`), and `openapi.json` now have detailed Markdown documentation for every route and model.
+- follow_ups: none
+
