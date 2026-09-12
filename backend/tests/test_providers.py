@@ -14,6 +14,7 @@ from providers.base import (
     ChatMessage,
     LLMResult,
     ProviderUnavailableError,
+    ToolCall,
     ToolSpec,
     Usage,
 )
@@ -239,6 +240,39 @@ class GeminiAdapterTest(unittest.TestCase):
 
         asyncio.run(run())
 
+    @unittest.skipUnless(HAS_GENAI, "google-genai is not installed")
+    def test_tool_response_uses_valid_roles(self) -> None:
+        from providers.gemini import _to_contents
+
+        messages = [
+            ChatMessage(role="user", content="tengo deudas"),
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=(
+                    ToolCall(name="get_financial_context", arguments={"user_id": "u_ana"}),
+                ),
+            ),
+            ChatMessage(
+                role="tool",
+                name="get_financial_context",
+                content='{"totals": {"debt": 1}}',
+            ),
+            ChatMessage(role="assistant", content="listo"),
+        ]
+        contents = _to_contents(messages)
+        roles = [content.role for content in contents]
+        # Regression: Gemini only accepts "user"/"model"; a function response
+        # must NOT be role "tool".
+        self.assertTrue(set(roles) <= {"user", "model"}, roles)
+        self.assertEqual(roles, ["user", "model", "user", "model"])
+        tool_content = contents[2]
+        self.assertEqual(tool_content.role, "user")
+        response = tool_content.parts[0].function_response
+        self.assertIsNotNone(response)
+        self.assertEqual(response.name, "get_financial_context")
+        self.assertEqual(dict(response.response), {"totals": {"debt": 1}})
+
 
 class DeepSeekTest(unittest.TestCase):
     def test_parses_tool_calls_and_usage(self) -> None:
@@ -278,6 +312,39 @@ class DeepSeekTest(unittest.TestCase):
                     await provider.generate([ChatMessage(role="user", content="hi")])
             finally:
                 await client.aclose()
+
+        asyncio.run(run())
+
+
+    def test_tool_call_id_matches_tool_message(self) -> None:
+        seen = {}
+
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            seen["payload"] = json.loads(request.content)
+            return httpx2.Response(200, json=CANNED_DEEPSEEK)
+
+        async def run() -> None:
+            client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+            provider = DeepSeekLLM(api_key="test", model="deepseek-flash", client=client)
+            messages = [
+                ChatMessage(role="user", content="hi"),
+                ChatMessage(
+                    role="assistant",
+                    content="",
+                    tool_calls=(ToolCall(name="get_liabilities", arguments={}),),
+                ),
+                ChatMessage(role="tool", name="get_liabilities", content="{}"),
+            ]
+            try:
+                await provider.generate(messages)
+            finally:
+                await client.aclose()
+
+            assistant = next(m for m in seen["payload"]["messages"] if m["role"] == "assistant")
+            tool = next(m for m in seen["payload"]["messages"] if m["role"] == "tool")
+            # Regression: the assistant tool_call id and the tool result must match.
+            self.assertEqual(assistant["tool_calls"][0]["id"], tool["tool_call_id"])
+            self.assertEqual(tool["tool_call_id"], "call_get_liabilities")
 
         asyncio.run(run())
 

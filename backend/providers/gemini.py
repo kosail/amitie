@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from .base import (
@@ -24,10 +25,17 @@ def _to_contents(messages: Messages) -> list[Any]:
         if message.role == "system":
             continue
         if message.role == "tool":
+            # Gemini only accepts the roles "user" and "model"; a function
+            # response is sent back in a "user" turn (SDK: Content.role).
+            try:
+                parsed = json.loads(message.content) if message.content else {}
+            except (ValueError, TypeError):
+                parsed = {"result": message.content}
+            response = parsed if isinstance(parsed, dict) else {"result": parsed}
             part = types.Part.from_function_response(
-                name=message.name or "tool", response={"result": message.content}
+                name=message.name or "tool", response=response
             )
-            contents.append(types.Content(role="tool", parts=[part]))
+            contents.append(types.Content(role="user", parts=[part]))
         elif message.role == "assistant":
             parts = []
             if message.content:

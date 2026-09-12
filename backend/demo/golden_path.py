@@ -1,13 +1,13 @@
 """Golden-path rehearsal runner (REQ-NFR-05, REQ-DEMO-01).
 
-Drives a running La Mesa backend through the demo beats and reports per-step
-timing. Usage (with the API already running on 127.0.0.1:8000):
+Drives a running La Mesa backend through the demo beats, prints per-step timing
+and error detail, and exits non-zero if any step fails or the run exceeds the
+90s budget. It first probes every provider so a failure is attributed to a
+vendor (LLM primary/fallback, research grounding, TTS) rather than guessed.
+
+Usage (with the API running on 127.0.0.1:8000):
 
     python -m demo.golden_path --base-url http://127.0.0.1:8000 --user u_ana
-
-This is a rehearsal aid: the LLM decides the actual interfaces, so the runner
-narrates and times the journey rather than asserting exact payloads. Run it
-before a live rehearsal (AGENTS.md §9).
 """
 
 from __future__ import annotations
@@ -19,41 +19,100 @@ from typing import Any
 import httpx2
 
 BUDGET_SECONDS = 90
-
-
-def _show(step: str, elapsed: float, detail: str) -> None:
-    print(f"[{elapsed:6.2f}s] {step:<22} {detail}")
+_OK = {True: "ok  ", False: "FAIL", None: "?   "}
 
 
 def run(base_url: str, user_id: str) -> int:
     client = httpx2.Client(base_url=base_url, timeout=120.0)
-    started = time.perf_counter()
+    failures: list[str] = []
     surface_id: str | None = None
     session_id: str | None = None
 
-    def step(name: str, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+    def show_providers() -> None:
+        try:
+            data = client.get("/debug/providers").json()
+        except Exception as exc:  # diagnostic never fatal
+            print(f"!! provider doctor unavailable: {exc!r}")
+            return
+        print("provider health:")
+        for provider in data.get("providers", []):
+            mark = _OK.get(provider.get("ok"), "?   ")
+            line = f"  {mark} {provider.get('name', ''):<13} {provider.get('provider', '') or ''}"
+            if provider.get("detail"):
+                line += f"  [{provider['detail']}]"
+            if provider.get("error"):
+                line += f"  {provider['error']}"
+            print(line)
+        print()
+
+    def show_trace(trace_id: str | None) -> None:
+        if not trace_id:
+            return
+        try:
+            events = client.get(f"/debug/trace/{trace_id}").json().get("events", [])
+        except Exception:
+            return
+        for event in events:
+            if event.get("error"):
+                print(
+                    f"      trace {event.get('kind')}/{event.get('name')} "
+                    f"provider={event.get('provider')} error={str(event['error'])[:200]}"
+                )
+
+    started = time.perf_counter()
+
+    def step(
+        name: str, method: str, path: str, *, needs: str | None = None, **kwargs: Any
+    ) -> dict[str, Any] | None:
         nonlocal surface_id
-        mark = time.perf_counter()
+        if needs == "surface" and not surface_id:
+            print(f"[{time.perf_counter() - started:6.2f}s] {name:<20} SKIP (no surface)")
+            failures.append(f"{name}: skipped (earlier step produced no surface)")
+            return None
+        if needs == "session" and not session_id:
+            print(f"[{time.perf_counter() - started:6.2f}s] {name:<20} SKIP (no session)")
+            failures.append(f"{name}: skipped (no session)")
+            return None
+
         response = client.request(method, path, **kwargs)
-        elapsed = time.perf_counter() - started
-        body = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
+        body: dict[str, Any] = {}
+        if response.headers.get("content-type", "").startswith("application/json"):
+            body = response.json()
         if body.get("surface_id"):
             surface_id = body["surface_id"]
-        _show(name, elapsed, f"{response.status_code} {body.get('status', '')}".strip())
+
+        status = body.get("status", "")
+        error_code = body.get("error_code") or ""
+        ok = response.status_code < 400 and status != "error"
+        detail = " ".join(part for part in (str(response.status_code), status, error_code) if part)
+        print(f"[{time.perf_counter() - started:6.2f}s] {name:<20} {detail}")
+        if not ok:
+            failures.append(f"{name} -> {detail}")
+            if body.get("message"):
+                print(f"      message: {body['message']}")
+            if body.get("issues"):
+                print(f"      issues: {body['issues']}")
+            show_trace(response.headers.get("x-trace-id"))
         return body
 
     try:
+        show_providers()
+
         session = step("session", "POST", "/api/session", json={"user_id": user_id})
-        session_id = session["session_id"]
+        session_id = (session or {}).get("session_id")
 
-        step("debt intent", "POST", "/api/message", json={"session_id": session_id, "text": "Tengo 5 deudas y ya no puedo"})
-        if surface_id:
-            step("break mutation", "GET", f"/api/ui/{surface_id}")
-
+        step(
+            "debt intent",
+            "POST",
+            "/api/message",
+            json={"session_id": session_id, "text": "Tengo 5 deudas y ya no puedo"},
+        )
+        step("break mutation", "GET", f"/api/ui/{surface_id}", needs="surface")
         step(
             "repair",
             "POST",
             "/api/action",
+            needs="surface",
             json={
                 "surface_id": surface_id,
                 "name": "approve_plan",
@@ -61,13 +120,13 @@ def run(base_url: str, user_id: str) -> int:
                 "context": {"extra_income": 8000},
             },
         )
-
-        step("el reves (bank)", "POST", f"/api/negotiation/{session_id}/turn", json={"user_id": user_id})
-        step("el reves (advocate)", "POST", f"/api/negotiation/{session_id}/turn", json={"user_id": user_id})
+        step("el reves (bank)", "POST", f"/api/negotiation/{session_id}/turn", needs="session", json={"user_id": user_id})
+        step("el reves (advocate)", "POST", f"/api/negotiation/{session_id}/turn", needs="session", json={"user_id": user_id})
         accepted = step(
             "accept offer",
             "POST",
             "/api/action",
+            needs="surface",
             json={
                 "surface_id": surface_id,
                 "name": "accept_offer",
@@ -75,16 +134,19 @@ def run(base_url: str, user_id: str) -> int:
                 "context": {"session_id": session_id},
             },
         )
-
-        kill_surface = accepted.get("surface_id") or surface_id
-        if kill_surface:
-            step("kill test", "GET", f"/debug/kill-test/{kill_surface}")
+        kill_surface = (accepted or {}).get("surface_id") or surface_id
+        step("kill test", "GET", f"/debug/kill-test/{kill_surface}", needs="surface")
 
         total = time.perf_counter() - started
-        status = "OK" if total <= BUDGET_SECONDS else "OVER BUDGET"
-        print(f"\n{status}: golden path completed in {total:.2f}s (budget {BUDGET_SECONDS}s)")
-        return 0 if total <= BUDGET_SECONDS else 1
-    except Exception as exc:  # pragma: no cover - rehearsal aid
+        if failures:
+            print(f"\nFAILED: {len(failures)} step(s) — {'; '.join(failures)}")
+            return 1
+        if total > BUDGET_SECONDS:
+            print(f"\nOVER BUDGET: golden path took {total:.2f}s (budget {BUDGET_SECONDS}s)")
+            return 1
+        print(f"\nOK: golden path completed in {total:.2f}s (budget {BUDGET_SECONDS}s)")
+        return 0
+    except Exception as exc:  # rehearsal aid
         print(f"golden path failed after {time.perf_counter() - started:.2f}s: {exc!r}")
         return 1
     finally:

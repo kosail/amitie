@@ -1,16 +1,100 @@
-"""GET /debug/trace/{trace_id} and GET /debug/kill-test/{surface_id}."""
+"""Debug endpoints: trace lookup, Kill Test, and provider diagnostics.
+
+`GET /debug/providers` actively probes each configured dependency with a minimal
+call so a rehearsal can attribute a failure to a specific vendor (LLM primary /
+fallback, research grounding, TTS) rather than guessing.
+"""
 
 from __future__ import annotations
+
+import asyncio
+import time
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from mcp_servers.toolbox import Toolbox
 from observability.tracing import Tracer
+from providers.base import ChatMessage, LLMProvider
+from providers.gateway import FallbackLLM
+from providers.research import ResearchProvider
+from providers.voice import STTProvider, TTSProvider
 
-from ..dependencies import get_toolbox, get_tracer
-from ..schemas import HttpErrorDetail, TraceResponse, UiResponse
+from ..dependencies import (
+    get_llm,
+    get_research,
+    get_stt,
+    get_toolbox,
+    get_tracer,
+    get_tts,
+)
+from ..schemas import ProviderHealth, ProvidersResponse, TraceResponse, UiResponse
 
 router = APIRouter(tags=["debug"])
+
+_LLM_PROMPT = "Responde únicamente con la palabra: pong"
+_RESEARCH_QUERY = "costo promedio en MXN de un vuelo redondo a Japón desde CDMX"
+_TTS_TEXT = "Hola, esta es una prueba de voz de La Mesa."
+_PROBE_TIMEOUT = 25.0
+
+
+def _entry(name: str, provider: Any, started: float, **extra: Any) -> ProviderHealth:
+    return ProviderHealth(
+        name=name,
+        provider=getattr(provider, "name", None),
+        model=getattr(provider, "model", None),
+        latency_ms=int((time.perf_counter() - started) * 1000),
+        **extra,
+    )
+
+
+async def _probe_llm(name: str, provider: LLMProvider) -> ProviderHealth:
+    started = time.perf_counter()
+    try:
+        result = await asyncio.wait_for(
+            provider.generate([ChatMessage(role="user", content=_LLM_PROMPT)], temperature=0.0),
+            timeout=_PROBE_TIMEOUT,
+        )
+        return _entry(name, provider, started, ok=True, detail=(result.text or "").strip()[:80])
+    except Exception as exc:  # diagnostic: report, never raise
+        return _entry(name, provider, started, ok=False, error=f"{type(exc).__name__}: {exc}")
+
+
+async def _probe_research(provider: ResearchProvider) -> ProviderHealth:
+    started = time.perf_counter()
+    try:
+        snapshot = await asyncio.wait_for(
+            provider.research(_RESEARCH_QUERY), timeout=_PROBE_TIMEOUT
+        )
+        return _entry("research", provider, started, ok=True, detail=snapshot.source)
+    except Exception as exc:
+        return _entry("research", provider, started, ok=False, error=f"{type(exc).__name__}: {exc}")
+
+
+async def _probe_tts(provider: TTSProvider) -> ProviderHealth:
+    started = time.perf_counter()
+    try:
+        result = await asyncio.wait_for(
+            provider.synthesize(_TTS_TEXT, "", 1.0), timeout=_PROBE_TIMEOUT
+        )
+        return _entry(
+            "tts",
+            provider,
+            started,
+            ok=True,
+            detail=f"{len(result.audio)} bytes via {result.provider}",
+        )
+    except Exception as exc:
+        return _entry("tts", provider, started, ok=False, error=f"{type(exc).__name__}: {exc}")
+
+
+def _probe_stt(provider: STTProvider) -> ProviderHealth:
+    return ProviderHealth(
+        name="stt",
+        provider=getattr(provider, "name", None),
+        ok=None,
+        detail="configured (a real probe needs audio input)",
+    )
 
 
 @router.get(
@@ -66,3 +150,23 @@ async def get_kill_test(
         catalog_id=result.get("catalog_id"),
         audio_ref=result.get("audio_ref"),
     )
+
+
+@router.get("/debug/providers", response_model=ProvidersResponse)
+async def get_providers(
+    llm: LLMProvider = Depends(get_llm),
+    research: ResearchProvider = Depends(get_research),
+    tts: TTSProvider = Depends(get_tts),
+    stt: STTProvider = Depends(get_stt),
+) -> ProvidersResponse:
+    """Probe every configured provider with a minimal real call."""
+    providers: list[ProviderHealth] = []
+    if isinstance(llm, FallbackLLM):
+        providers.append(await _probe_llm("llm.primary", llm.primary))
+        providers.append(await _probe_llm("llm.fallback", llm.fallback))
+    else:
+        providers.append(await _probe_llm("llm", llm))
+    providers.append(await _probe_research(research))
+    providers.append(await _probe_tts(tts))
+    providers.append(_probe_stt(stt))
+    return ProvidersResponse(status="ok", providers=providers)

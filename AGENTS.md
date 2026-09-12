@@ -95,7 +95,7 @@ Root documents: `AGENTS.md`, `INVARIANTS.md`, `SPECS.md`, `CHANGELOG.md`, and `A
   hydration/      placeholder resolver + revalidation (plan/savings/assumptions/speech) (pure, tested)
   db/             port.py, local_sqlite.py, schema.sql, schema.py (idempotent column migration), seed.py, sql_utils.py, init.py
   tests/          persistence, engine, observability, provider, and A2UI contract tests
-  observability/  trace middleware, structured logging, /debug/trace
+  observability/  trace middleware, structured logging, /debug/trace + /debug/providers
   audio_cache/    pre-warmed TTS assets
   demo/           golden-path rehearsal runner
   .env.example    template only; real .env is git-ignored

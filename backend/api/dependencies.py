@@ -15,6 +15,9 @@ from agent.service import AgentService
 from db.port import DatabasePort
 from mcp_servers.toolbox import Toolbox
 from observability.tracing import Tracer
+from providers.base import LLMProvider
+from providers.research import ResearchProvider
+from providers.voice import STTProvider, TTSProvider
 
 
 def now_iso() -> str:
@@ -39,3 +42,19 @@ def get_agent_service(request: Request) -> AgentService:
 
 def get_negotiation_service(request: Request) -> NegotiationService:
     return request.app.state.negotiation_service
+
+
+def get_llm(request: Request) -> LLMProvider:
+    return request.app.state.llm
+
+
+def get_research(request: Request) -> ResearchProvider:
+    return request.app.state.research
+
+
+def get_tts(request: Request) -> TTSProvider:
+    return request.app.state.tts
+
+
+def get_stt(request: Request) -> STTProvider:
+    return request.app.state.stt

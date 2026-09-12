@@ -23,18 +23,25 @@ from .base import (
 )
 
 
+def _tool_call_id(call: ToolCall, index: int) -> str:
+    return call.id or f"call_{call.name or index}"
+
+
 def _message_payload(message: ChatMessage) -> dict[str, Any]:
     if message.role == "tool":
+        # The tool_call_id must match the id of the assistant tool call. ADK
+        # function calls arrive without ids, so both sides derive the same id
+        # from the function name.
         return {
             "role": "tool",
-            "tool_call_id": message.tool_call_id or "",
+            "tool_call_id": message.tool_call_id or f"call_{message.name or 'tool'}",
             "content": message.content,
         }
     payload: dict[str, Any] = {"role": message.role, "content": message.content}
     if message.role == "assistant" and message.tool_calls:
         payload["tool_calls"] = [
             {
-                "id": call.id or f"call_{index}",
+                "id": _tool_call_id(call, index),
                 "type": "function",
                 "function": {"name": call.name, "arguments": json.dumps(call.arguments)},
             }
