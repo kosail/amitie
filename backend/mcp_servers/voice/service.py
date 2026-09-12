@@ -94,7 +94,7 @@ async def synthesize_speech(
         "file_path, created_at) VALUES (?,?,?,?,?,?,?,?)",
         (
             asset_id,
-            user_id,
+            user_id or None,
             surface_id or None,
             clean,
             digest,

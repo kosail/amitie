@@ -1,5 +1,27 @@
 """API routers."""
 
-from . import action, debug, message, negotiation, session, ui
+from . import (
+    action,
+    audio,
+    debug,
+    loans,
+    message,
+    negotiation,
+    saving_bags,
+    session,
+    ui,
+    voice,
+)
 
-__all__ = ["action", "debug", "message", "negotiation", "session", "ui"]
+__all__ = [
+    "action",
+    "audio",
+    "debug",
+    "loans",
+    "message",
+    "negotiation",
+    "saving_bags",
+    "session",
+    "ui",
+    "voice",
+]

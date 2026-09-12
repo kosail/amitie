@@ -23,3 +23,5 @@ backend/audio_cache/*
 .DS_Store
 .idea/
 .vscode/
+
+*/*.mp3

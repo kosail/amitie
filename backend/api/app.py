@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from agent.negotiation import NegotiationService
+from agent.loans import LoansConsultService
 from agent.service import AgentService
 from config import Settings, load_dotenv
 from db.local_sqlite import LocalSQLiteDatabase
@@ -26,7 +27,14 @@ from mcp_servers.voice.server import build_voice_server
 from observability.middleware import TraceMiddleware
 from observability.tracing import Tracer
 from providers.base import LLMProvider
-from providers.registry import build_llm_gateway, build_research, build_stt, build_tts
+from providers.registry import (
+    build_llm_gateway,
+    build_research,
+    build_stt,
+    build_stt_options,
+    build_tts,
+    build_tts_options,
+)
 from providers.research import ResearchProvider
 from providers.voice import STTProvider, TTSProvider
 
@@ -34,13 +42,15 @@ from .routers import (
     action,
     audio,
     auth,
-    debug,
     finance,
+    debug,
+    loans,
     message,
     negotiation,
     saving_bags,
     session,
     ui,
+    voice,
 )
 
 
@@ -51,6 +61,8 @@ def create_app(
     research: ResearchProvider | None = None,
     tts: TTSProvider | None = None,
     stt: STTProvider | None = None,
+    tts_options: dict[str, TTSProvider] | None = None,
+    stt_options: dict[str, STTProvider] | None = None,
 ) -> FastAPI:
     load_dotenv()
     resolved = settings or Settings.from_env()
@@ -63,13 +75,24 @@ def create_app(
         research_provider = research or build_research(resolved)
         tts_provider = tts or build_tts(resolved)
         stt_provider = stt or build_stt(resolved)
+        resolved_tts_options = (
+            tts_options if tts_options is not None else build_tts_options(resolved)
+        )
+        resolved_stt_options = (
+            stt_options if stt_options is not None else build_stt_options(resolved)
+        )
         toolbox = InProcessToolbox(
             {
                 "finance": build_finance_server(database),
                 "savings": build_savings_server(database, research_provider),
                 "ui": build_ui_server(database),
                 "voice": build_voice_server(
-                    database, tts_provider, stt_provider, cache_dir=resolved.audio_cache_dir
+                    database,
+                    tts_provider,
+                    stt_provider,
+                    tts_options=resolved_tts_options,
+                    stt_options=resolved_stt_options,
+                    cache_dir=resolved.audio_cache_dir,
                 ),
             }
         )
@@ -87,6 +110,7 @@ def create_app(
             tracer=tracer,
             max_model_calls=resolved.agent_max_model_calls,
         )
+        loans_service = LoansConsultService(provider=llm, toolbox=toolbox, tracer=tracer)
         app.state.settings = resolved
         app.state.database = database
         app.state.tracer = tracer
@@ -97,6 +121,7 @@ def create_app(
         app.state.stt = stt_provider
         app.state.agent_service = agent_service
         app.state.negotiation_service = negotiation_service
+        app.state.loans_service = loans_service
         try:
             yield
         finally:
@@ -118,7 +143,11 @@ def create_app(
     app.include_router(finance.router)
     app.include_router(ui.router)
     app.include_router(audio.router)
-    app.include_router(debug.router)
+    app.include_router(loans.router)
+    if resolved.enable_debug_endpoints:
+        # Diagnostics only: not part of the frozen frontend contract (INV-023).
+        app.include_router(voice.router)
+        app.include_router(debug.router)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:

@@ -68,7 +68,7 @@ class NegotiationService:
         provider: LLMProvider,
         toolbox: Toolbox,
         tracer: Any | None = None,
-        max_model_calls: int = 6,
+        max_model_calls: int = 10,
         max_rounds: int = MAX_ROUNDS,
     ) -> None:
         self._toolbox = toolbox

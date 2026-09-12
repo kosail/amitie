@@ -16,6 +16,34 @@ from .base import (
     Usage,
 )
 
+# Google's documented placeholder for a Part we synthesize ourselves (a model
+# turn / tool call the model never actually produced). It bypasses the Gemini
+# backend's thought-signature validation. See google.adk.utils.content_utils.
+_SKIP_SIGNATURE = b"skip_thought_signature_validator"
+
+
+def _tool_calls_with_signatures(response: Any) -> tuple[ToolCall, ...]:
+    """Prefer candidate parts so the opaque `thought_signature` is preserved."""
+    calls: list[ToolCall] = []
+    for candidate in getattr(response, "candidates", None) or []:
+        content = getattr(candidate, "content", None)
+        for part in getattr(content, "parts", None) or []:
+            function_call = getattr(part, "function_call", None)
+            if function_call:
+                calls.append(
+                    ToolCall(
+                        name=function_call.name or "",
+                        arguments=dict(function_call.args or {}),
+                        thought_signature=getattr(part, "thought_signature", None),
+                    )
+                )
+    if calls:
+        return tuple(calls)
+    return tuple(
+        ToolCall(name=call.name or "", arguments=dict(call.args or {}))
+        for call in (getattr(response, "function_calls", None) or [])
+    )
+
 
 def _to_contents(messages: Messages) -> list[Any]:
     from google.genai import types
@@ -41,7 +69,11 @@ def _to_contents(messages: Messages) -> list[Any]:
             if message.content:
                 parts.append(types.Part.from_text(text=message.content))
             for call in message.tool_calls:
-                parts.append(types.Part.from_function_call(name=call.name, args=call.arguments))
+                # Echo the real signature when we have it; otherwise mark the
+                # synthesized part so Gemini accepts it.
+                part = types.Part.from_function_call(name=call.name, args=call.arguments)
+                part.thought_signature = call.thought_signature or _SKIP_SIGNATURE
+                parts.append(part)
             if parts:
                 contents.append(types.Content(role="model", parts=parts))
         else:
@@ -100,10 +132,7 @@ def _to_result(response: Any, provider: str, model: str) -> LLMResult:
         text = response.text or ""
     except Exception:
         text = ""
-    tool_calls = tuple(
-        ToolCall(name=call.name or "", arguments=dict(call.args or {}))
-        for call in (response.function_calls or [])
-    )
+    tool_calls = _tool_calls_with_signatures(response)
     usage = Usage()
     metadata = getattr(response, "usage_metadata", None)
     if metadata is not None:

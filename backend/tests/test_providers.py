@@ -201,6 +201,34 @@ class _FakeGeminiClient:
         self.aio = _FakeGeminiAio()
 
 
+class _FakePart:
+    def __init__(self, name: str, args: dict, signature: bytes | None = None) -> None:
+        self.function_call = _FakeFunctionCall(name, args)
+        self.thought_signature = signature
+
+
+class _FakeCandidateResponse:
+    text = "hola"
+    usage_metadata = _FakeUsageMetadata()
+
+    def __init__(self, signature: bytes | None) -> None:
+        part = _FakePart("get_liabilities", {"user_id": "u_ana"}, signature)
+        self.candidates = [type("C", (), {"content": type("K", (), {"parts": [part]})()})()]
+
+
+class _FakeCandidateModels:
+    def __init__(self, signature: bytes | None) -> None:
+        self._signature = signature
+
+    async def generate_content(self, **kwargs):
+        return _FakeCandidateResponse(self._signature)
+
+
+class _FakeCandidateClient:
+    def __init__(self, signature: bytes | None = None) -> None:
+        self.aio = type("Aio", (), {"models": _FakeCandidateModels(signature)})()
+
+
 class GeminiAdapterTest(unittest.TestCase):
     @unittest.skipUnless(HAS_GENAI, "google-genai is not installed")
     def test_maps_response_and_builds_config(self) -> None:
@@ -259,6 +287,39 @@ class GeminiAdapterTest(unittest.TestCase):
         self.assertIsNotNone(response)
         self.assertEqual(response.name, "get_financial_context")
         self.assertEqual(dict(response.response), {"totals": {"debt": 1}})
+
+    @unittest.skipUnless(HAS_GENAI, "google-genai is not installed")
+    def test_to_result_preserves_thought_signature(self) -> None:
+        from providers.gemini import GeminiLLM
+
+        async def run() -> None:
+            client = _FakeCandidateClient(b"sig-123")
+            provider = GeminiLLM(api_key="", model="gemini-3.6-flash", client=client)
+            result = await provider.generate([ChatMessage(role="user", content="hi")])
+            self.assertEqual(result.tool_calls[0].thought_signature, b"sig-123")
+
+        asyncio.run(run())
+
+    @unittest.skipUnless(HAS_GENAI, "google-genai is not installed")
+    def test_assistant_call_echoes_signature_or_sentinel(self) -> None:
+        from providers.gemini import _SKIP_SIGNATURE, _to_contents
+
+        contents = _to_contents(
+            [
+                ChatMessage(
+                    role="assistant",
+                    content="",
+                    tool_calls=(
+                        ToolCall(name="a", arguments={}, thought_signature=b"real"),
+                        ToolCall(name="b", arguments={}),
+                    ),
+                )
+            ]
+        )
+        model = contents[0]
+        self.assertEqual(model.role, "model")
+        self.assertEqual(model.parts[0].thought_signature, b"real")
+        self.assertEqual(model.parts[1].thought_signature, _SKIP_SIGNATURE)
 
 
 class DeepSeekTest(unittest.TestCase):

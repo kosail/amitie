@@ -69,6 +69,14 @@ def build_finance_server(database: DatabasePort) -> MCPServer:
         return {"context": await service.financial_context(database, user_id)}
 
     @server.tool()
+    async def get_credit_history(user_id: str, months: int = 6) -> dict[str, Any]:
+        """Return a compact credit history (credits, totals, cash flow, spending by
+        category) for the loans consult prompt."""
+        return {
+            "creditHistory": await service.get_credit_history(database, user_id, months=months)
+        }
+
+    @server.tool()
     async def simulate_plan(
         user_id: str,
         strategy: str = "avalanche",

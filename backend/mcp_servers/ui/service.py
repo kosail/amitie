@@ -59,6 +59,7 @@ def _descriptor(
     speech: str = "",
     voice_id: str = "",
     speed: float = 1.0,
+    data_model: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     descriptor: dict[str, Any] = {
         "user_id": user_id,
@@ -69,6 +70,8 @@ def _descriptor(
     }
     if simulation:
         descriptor["simulation"] = simulation
+    if data_model:
+        descriptor["data_model"] = data_model
     if accessible:
         descriptor.update({"speech": speech, "voice_id": voice_id, "speed": speed})
     return descriptor
@@ -82,6 +85,11 @@ async def _render(
     stored = json.loads(row["template_json"])
     domain = descriptor.get("domain") or row["domain"]
     context = await finance_service.financial_context(database, user_id)
+    # Snapshot values captured at persist time (for `{{placeholders}}`); live
+    # finance values take precedence where keys overlap.
+    snapshot = descriptor.get("data_model")
+    if isinstance(snapshot, dict) and snapshot:
+        context = {**snapshot, **context}
     savings = None
     if domain == "saving_bag":
         bag_id = descriptor.get("entity_id") or row["entity_id"]
@@ -151,6 +159,7 @@ async def persist_ui(
         speech=spoken,
         voice_id=(profile or {}).get("voice_id", ""),
         speed=(profile or {}).get("speed", 1.0),
+        data_model=data_model,
     )
     await database.execute(
         "INSERT INTO generated_ui (id, user_id, domain, entity_id, catalog_id, template_json, "

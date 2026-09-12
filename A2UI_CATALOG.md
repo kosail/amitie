@@ -102,6 +102,7 @@ All five fields are required. Defined action names:
 
 - Generated surfaces are persisted in `generated_ui` with a `catalog_id`, a `template_json`, and `bindings_json`.
 - Persisted templates use `{{path.to.value}}` placeholders (resolved against the database at delivery time). Placeholders carry **data only**.
+- The Loans & Credits consult flow also stores a `data_model` snapshot with the surface; it is merged into the resolution context on delivery (live values win on key overlap). See `LOANS_CONSULT_GUIDE.md`.
 - Before every delivery the backend hydrates placeholders and runs a **revalidation** pass that may mutate the component structure (for example, inserting a `BreakAlert`). Structure is never treated as static.
 - `generated_ui.version` increments on any structural change.
 

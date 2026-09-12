@@ -66,7 +66,7 @@ class AgentService:
         provider: LLMProvider,
         toolbox: Toolbox,
         tracer: Tracer | None = None,
-        max_model_calls: int = 6,
+        max_model_calls: int = 10,
     ) -> None:
         self._toolbox = toolbox
         self._tracer = tracer

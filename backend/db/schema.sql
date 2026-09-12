@@ -114,6 +114,15 @@ CREATE TABLE IF NOT EXISTS saving_bag_plan (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS loan_requests (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    status TEXT NOT NULL DEFAULT 'open',
+    context_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS generated_ui (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id),
@@ -201,6 +210,7 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_user ON subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_liabilities_user ON liabilities(user_id);
 CREATE INDEX IF NOT EXISTS idx_saving_bags_user ON saving_bags(user_id);
 CREATE INDEX IF NOT EXISTS idx_generated_ui_user ON generated_ui(user_id);
+CREATE INDEX IF NOT EXISTS idx_loan_requests_user ON loan_requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_generated_ui_domain ON generated_ui(domain, entity_id);
 CREATE INDEX IF NOT EXISTS idx_ui_actions_surface ON ui_actions(surface_id);
 CREATE INDEX IF NOT EXISTS idx_negotiation_session ON negotiation_rounds(session_id);

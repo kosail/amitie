@@ -57,7 +57,11 @@ def to_messages(llm_request: Any) -> list[ChatMessage]:
             function_call = getattr(part, "function_call", None)
             if function_call:
                 calls.append(
-                    ToolCall(name=function_call.name, arguments=dict(function_call.args or {}))
+                    ToolCall(
+                        name=function_call.name,
+                        arguments=dict(function_call.args or {}),
+                        thought_signature=getattr(part, "thought_signature", None),
+                    )
                 )
             function_response = getattr(part, "function_response", None)
             if function_response:
@@ -101,7 +105,10 @@ def to_tool_specs(llm_request: Any) -> list[ToolSpec]:
 def to_llm_response(result: LLMResult) -> LlmResponse:
     parts: list[Any] = []
     for call in result.tool_calls:
-        parts.append(types.Part.from_function_call(name=call.name, args=call.arguments))
+        part = types.Part.from_function_call(name=call.name, args=call.arguments)
+        if call.thought_signature:
+            part.thought_signature = call.thought_signature
+        parts.append(part)
     if result.text:
         parts.append(types.Part.from_text(text=result.text))
     usage = types.GenerateContentResponseUsageMetadata(
@@ -120,7 +127,7 @@ class GatewayLlm(BaseLlm):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     provider: LLMProvider
-    max_calls: int = 6
+    max_calls: int = 10
     _calls: int = PrivateAttr(default=0)
 
     @classmethod
