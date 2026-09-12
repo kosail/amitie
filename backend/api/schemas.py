@@ -20,6 +20,7 @@ class MessageRequest(BaseModel):
     session_id: str
     text: str | None = None
     audio_b64: str | None = None
+    language: str = "es-MX"
 
 
 class ActionRequest(BaseModel):
@@ -38,6 +39,8 @@ class AgentResponse(BaseModel):
     message: str | None = None
     actor: str | None = None
     round: int | None = None
+    catalog_id: str | None = None
+    audio_ref: str | None = None
 
 
 class NegotiationRequest(BaseModel):
@@ -87,3 +90,5 @@ class SavingBagResponse(BaseModel):
     assistant_text: str = ""
     issues: list[str] = Field(default_factory=list)
     message: str | None = None
+    catalog_id: str | None = None
+    audio_ref: str | None = None

@@ -42,12 +42,12 @@
 
 ## 4. Voz y Color (automatic accessibility)
 
-- [ ] **REQ-ACC-01** — Account flags in `accessibility_profiles` automatically activate accessible mode (elderly, blind, other needs, low literacy).
-- [ ] **REQ-ACC-02** — In accessible mode the agent selects the dedicated `voz-color` catalog (high contrast, icon-first, large targets).
-- [ ] **REQ-ACC-03** — Every emitted surface in accessible mode includes a speech payload; audio is generated via the `voice` MCP and returned as an audio reference.
-- [ ] **REQ-ACC-04** — User audio input is transcribed (Gemini STT, fallback faster-whisper) and interpreted by the agent to determine the next step.
-- [ ] **REQ-ACC-05** — Synthesized audio is cached by text hash so repeat runs are fast and resilient.
-- [ ] **REQ-ACC-06** — Non-flagged users receive the standard catalog, making the adaptability visible by contrast.
+- [x] **REQ-ACC-01** — Account flags in `accessibility_profiles` automatically activate accessible mode (elderly, blind, other needs, low literacy).
+- [x] **REQ-ACC-02** — In accessible mode the agent selects the dedicated `voz-color` catalog (high contrast, icon-first, large targets).
+- [x] **REQ-ACC-03** — Every emitted surface in accessible mode includes a speech payload; audio is generated via the `voice` MCP and returned as an audio reference.
+- [x] **REQ-ACC-04** — User audio input is transcribed (Gemini STT, fallback faster-whisper) and interpreted by the agent to determine the next step.
+- [x] **REQ-ACC-05** — Synthesized audio is cached by text hash so repeat runs are fast and resilient.
+- [x] **REQ-ACC-06** — Non-flagged users receive the standard catalog, making the adaptability visible by contrast.
 
 ## 5. Caja de Cristal (transparency)
 
@@ -74,7 +74,7 @@
 - [ ] **REQ-API-04** `GET /api/ui/{surface_id}` — hydration + revalidation → `{a2ui[]}`
 - [x] **REQ-API-05** Saving bags: `POST /api/saving-bags`, `GET /api/saving-bags[/{id}]`, `POST /api/saving-bags/{id}/answer`, `POST /api/saving-bags/{id}/refresh`
 - [x] **REQ-API-06** `POST /api/negotiation/{session}/turn`, `POST /api/negotiation/{session}/take-control`
-- [ ] **REQ-API-07** `GET /api/audio/{asset_id}`
+- [x] **REQ-API-07** `GET /api/audio/{asset_id}`
 - [ ] **REQ-API-08** `GET /debug/kill-test/{surface_id}`, `GET /debug/trace/{trace_id}`
 
 ## 9. Data
@@ -87,7 +87,7 @@
 
 ## 10. Non-functional
 
-- [ ] **REQ-NFR-01** — Provider failover works without code changes and keeps development/demo alive on quota exhaustion (Gemini→DeepSeek, ElevenLabs→edge-tts, Gemini STT→faster-whisper, grounding→fallback table).
+- [x] **REQ-NFR-01** — Provider failover works without code changes and keeps development/demo alive on quota exhaustion (Gemini→DeepSeek, ElevenLabs→edge-tts, Gemini STT→faster-whisper, grounding→fallback table).
 - [ ] **REQ-NFR-02** — Every request and every LLM/MCP call is traceable by `trace_id`.
 - [ ] **REQ-NFR-03** — Modules can be built, run, and tested independently (isolated MCP servers; pure engine and hydration modules).
 - [ ] **REQ-NFR-04** — `DEMO_MODE` pins the system to seeded data and cached responses if any provider degrades.

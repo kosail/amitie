@@ -9,6 +9,7 @@ from config import Settings
 from .base import LLMProvider
 from .gateway import FallbackLLM
 from .research import FallbackResearch, ResearchProvider, StaticPriceTableResearch
+from .voice import FallbackSTT, FallbackTTS, NullSTT, NullTTS, STTProvider, TTSProvider
 
 
 def build_llm(settings: Settings) -> LLMProvider:
@@ -67,3 +68,57 @@ def build_research(settings: Settings) -> ResearchProvider:
         return primary
     fallback = _build_research_provider(settings, fallback_name)
     return FallbackResearch(primary, fallback)
+
+
+def _build_tts(settings: Settings, name: str) -> TTSProvider:
+    if name in ("edge_tts", "edge-tts", "edge"):
+        from .voice import EdgeTTS
+
+        return EdgeTTS(settings.edge_tts_voice)
+    if name == "elevenlabs":
+        from .voice import ElevenLabsTTS
+
+        return ElevenLabsTTS(
+            api_key=settings.elevenlabs_api_key,
+            model=settings.elevenlabs_model,
+            default_voice_id=settings.elevenlabs_voice_id,
+        )
+    if name in ("none", "null", ""):
+        return NullTTS()
+    raise ValueError(f"unknown TTS provider: {name!r}")
+
+
+def build_tts(settings: Settings) -> TTSProvider:
+    name = settings.tts_provider
+    if name == "elevenlabs" and not settings.elevenlabs_api_key:
+        name = settings.tts_fallback or "edge_tts"
+    primary = _build_tts(settings, name)
+    fallback_name = settings.tts_fallback
+    if not fallback_name or fallback_name == name:
+        return primary
+    return FallbackTTS(primary, _build_tts(settings, fallback_name))
+
+
+def _build_stt(settings: Settings, name: str) -> STTProvider:
+    if name == "gemini":
+        from .voice import GeminiSTT
+
+        return GeminiSTT(api_key=settings.gemini_api_key, model=settings.stt_model)
+    if name in ("faster_whisper", "faster-whisper", "whisper"):
+        from .voice import FasterWhisperSTT
+
+        return FasterWhisperSTT(settings.whisper_model)
+    if name in ("none", "null", ""):
+        return NullSTT()
+    raise ValueError(f"unknown STT provider: {name!r}")
+
+
+def build_stt(settings: Settings) -> STTProvider:
+    name = settings.stt_provider
+    if name == "gemini" and not settings.gemini_api_key:
+        name = settings.stt_fallback or "faster_whisper"
+    primary = _build_stt(settings, name)
+    fallback_name = settings.stt_fallback
+    if not fallback_name or fallback_name == name:
+        return primary
+    return FallbackSTT(primary, _build_stt(settings, fallback_name))

@@ -1,0 +1,19 @@
+{
+  "catalogId": "amitie.voz-color.v1",
+  "version": "v0.9",
+  "description": "La Mesa accessible catalog — high contrast, icon-first, large targets, TTS-first. Activated automatically from accessibility_profiles. Shares the standard component set (extends amitie.standard.v1); the catalog ID is what the frontend keys its accessible styling on.",
+  "extends": "amitie.standard.v1",
+  "messages": ["createSurface", "updateComponents", "updateDataModel", "deleteSurface"],
+  "actions": [
+    "select_strategy",
+    "tune_tradeoff",
+    "request_simulation",
+    "approve_plan",
+    "toggle_assumption",
+    "take_control",
+    "accept_offer",
+    "refresh_bag",
+    "adjust_goal"
+  ],
+  "components": {}
+}

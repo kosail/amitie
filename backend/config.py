@@ -68,6 +68,18 @@ class Settings:
     research_fallback: str = "static_table"
     research_timeout_seconds: float = 8.0
 
+    tts_provider: str = "elevenlabs"
+    tts_fallback: str = "edge_tts"
+    stt_provider: str = "gemini"
+    stt_fallback: str = "faster_whisper"
+    elevenlabs_api_key: str = ""
+    elevenlabs_voice_id: str = ""
+    elevenlabs_model: str = "eleven_multilingual_v2"
+    edge_tts_voice: str = "es-MX-DaliaNeural"
+    stt_model: str = "gemini-2.5-flash"
+    whisper_model: str = "small"
+    audio_cache_dir: str = "./audio_cache"
+
     agent_max_model_calls: int = 6
 
     @classmethod
@@ -88,5 +100,16 @@ class Settings:
             research_provider=os.environ.get("RESEARCH_PROVIDER", "gemini_grounding").strip().lower(),
             research_fallback=os.environ.get("RESEARCH_FALLBACK", "static_table").strip().lower(),
             research_timeout_seconds=_as_float("RESEARCH_TIMEOUT_SECONDS", "8"),
+            tts_provider=os.environ.get("TTS_PROVIDER", "elevenlabs").strip().lower(),
+            tts_fallback=os.environ.get("TTS_FALLBACK", "edge_tts").strip().lower(),
+            stt_provider=os.environ.get("STT_PROVIDER", "gemini").strip().lower(),
+            stt_fallback=os.environ.get("STT_FALLBACK", "faster_whisper").strip().lower(),
+            elevenlabs_api_key=os.environ.get("ELEVENLABS_API_KEY", "").strip(),
+            elevenlabs_voice_id=os.environ.get("ELEVENLABS_VOICE_ID", "").strip(),
+            elevenlabs_model=os.environ.get("ELEVENLABS_MODEL", "eleven_multilingual_v2").strip(),
+            edge_tts_voice=os.environ.get("EDGE_TTS_VOICE", "es-MX-DaliaNeural").strip(),
+            stt_model=os.environ.get("STT_MODEL", "gemini-2.5-flash").strip(),
+            whisper_model=os.environ.get("WHISPER_MODEL", "small").strip(),
+            audio_cache_dir=os.environ.get("AUDIO_CACHE_DIR", "./audio_cache").strip(),
             agent_max_model_calls=_as_int("AGENT_MAX_MODEL_CALLS", "6"),
         )

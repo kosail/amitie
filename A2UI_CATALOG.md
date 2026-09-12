@@ -16,6 +16,8 @@
 
 A surface declares exactly one catalog in `createSurface`. The agent may switch catalogs between surfaces but never mixes components from two catalogs in one surface.
 
+`amitie.voz-color.v1` reuses the standard component set (its catalog extends `amitie.standard.v1`) and is distinguished by its catalog ID, which the frontend keys accessible styling and layout on. It is selected **automatically** from `accessibility_profiles`; the user never toggles it.
+
 ## 2. Message model (v0.9)
 
 All payloads are JSON arrays of messages, each carrying `"version": "v0.9"`:
@@ -144,3 +146,13 @@ Everything else in §6 is reserved for later milestones and must not be emitted 
 
 - Additive, backward-compatible changes (new optional prop, new component) → bump the catalog minor tag and log in `CHANGELOG.md`.
 - Renaming/removing a component, prop, or action → breaking change; requires a new catalog ID, frontend confirmation, and a `CHANGELOG.md` entry.
+
+## 11. Audio & speech
+
+A2UI v0.9 has no audio message type, so speech rides the surface **data model** plus the HTTP response:
+
+- In accessible mode (`amitie.voz-color.v1`), every emitted surface carries a `/speech` object:
+  `{ "text": string, "audioRef": "/api/audio/{asset_id}", "provider": string }`.
+- The `audioRef` points at the `voice` MCP-generated asset, cached by text hash. The frontend fetches it via `GET /api/audio/{asset_id}` and plays it.
+- Mutation responses (`POST /api/message`, `/api/action`, saving bags, negotiation, `GET /api/ui/{id}`) additionally expose a top-level `audio_ref` field for convenience.
+- Audio **input** is transcribed through the `voice` MCP (`transcribe_audio`) before the agent interprets it; the transcription is treated as the user's `text`.

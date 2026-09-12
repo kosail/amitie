@@ -16,7 +16,7 @@ from .base import (
     Usage,
 )
 from .gateway import FallbackLLM
-from .registry import build_llm, build_llm_gateway, build_research
+from .registry import build_llm, build_llm_gateway, build_research, build_stt, build_tts
 from .research import (
     FallbackResearch,
     GeminiGroundingResearch,
@@ -24,24 +24,52 @@ from .research import (
     ResearchSnapshot,
     StaticPriceTableResearch,
 )
+from .voice import (
+    EdgeTTS,
+    ElevenLabsTTS,
+    FallbackSTT,
+    FallbackTTS,
+    FasterWhisperSTT,
+    GeminiSTT,
+    NullSTT,
+    NullTTS,
+    STTProvider,
+    SynthesisResult,
+    TranscriptionResult,
+    TTSProvider,
+)
 
 __all__ = [
     "ChatMessage",
+    "EdgeTTS",
+    "ElevenLabsTTS",
     "FallbackLLM",
     "FallbackResearch",
+    "FallbackSTT",
+    "FallbackTTS",
+    "FasterWhisperSTT",
     "GeminiGroundingResearch",
+    "GeminiSTT",
     "LLMProvider",
     "LLMResult",
+    "NullSTT",
+    "NullTTS",
     "ProviderError",
     "ProviderResponseError",
     "ProviderUnavailableError",
     "ResearchProvider",
     "ResearchSnapshot",
+    "STTProvider",
     "StaticPriceTableResearch",
+    "SynthesisResult",
+    "TTSProvider",
     "ToolCall",
     "ToolSpec",
+    "TranscriptionResult",
     "Usage",
     "build_llm",
     "build_llm_gateway",
     "build_research",
+    "build_stt",
+    "build_tts",
 ]

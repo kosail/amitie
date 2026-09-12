@@ -22,11 +22,14 @@ def build_ui_server(database: DatabasePort) -> MCPServer:
         data_model: dict[str, Any],
         entity_id: str = "",
         simulation: dict[str, Any] | None = None,
+        speech: str = "",
     ) -> dict[str, Any]:
         """Persist a generated A2UI surface. Returns status ok with the surface id,
         or status error with validation issues to fix and retry. Pass `simulation`
         (strategy, extra_payment, extra_income, expense_reduction, horizon_months,
-        events) so the plan can be revalidated deterministically on re-fetch."""
+        events) so the plan can be revalidated deterministically on re-fetch. Pass
+        `speech` with the spoken summary when the user is in accessible mode
+        (the catalog and audio are handled automatically)."""
         return await service.persist_ui(
             database,
             user_id=user_id,
@@ -36,6 +39,7 @@ def build_ui_server(database: DatabasePort) -> MCPServer:
             data_model=data_model,
             entity_id=entity_id,
             simulation=simulation,
+            speech=speech,
         )
 
     @server.tool()

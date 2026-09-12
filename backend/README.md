@@ -73,15 +73,17 @@ Data never leaves the host: the tunnel only forwards HTTP to the local process
 - Provider layer: Gemini primary via `google-genai`, DeepSeek fallback via `httpx2`,
   with env-only selection and an automatic failover chain; web research via
   Gemini Google Search grounding with a deterministic price-table fallback.
+- Voice: ElevenLabs TTS (fallback edge-tts) and Gemini STT (fallback optional
+  faster-whisper), with env-only selection and text-only degradation.
 - FastAPI + Uvicorn for the HTTP API.
 - Google ADK for agent orchestration.
-- A2UI Python agent SDK schemas for validation (`a2ui-agent-sdk` + `jsonschema`).
-- MCP Python SDK for in-process `finance`, `savings`, and `ui` servers.
+- A2UI Python agent SDK schemas for validation (`a2ui-agent-sdk` + `jsonschema`),
+  including the accessible `amitie.voz-color.v1` catalog.
+- MCP Python SDK for in-process `finance`, `savings`, `ui`, and `voice` servers.
 
 **Planned / in progress**
-- ElevenLabs TTS (fallback edge-tts); Gemini STT (fallback faster-whisper).
-- In-process `voice` MCP server.
 - `cloudflared` for internet exposure.
+- Optional faster-whisper STT (lazy import; not in `requirements.txt`).
 
 **Not ours**
 - Frontend: React + TypeScript + Tailwind with a fully custom A2UI renderer.
@@ -126,6 +128,7 @@ backend/
     gemini.py               Primary LLM via google-genai
     deepseek.py             Fallback LLM via OpenAI-compatible httpx2
     research.py             Research chain: Gemini grounding → static price table
+    voice.py                TTS chain (ElevenLabs → edge-tts) + STT chain (Gemini → whisper)
     registry.py             Env-only provider selection
     gateway.py              FallbackLLM: failover + cooldown + tracing
 
@@ -138,11 +141,12 @@ backend/
     schema_registry.py      referencing.Registry over the vendored A2UI schemas
     schemas/0.9/            vendored A2UI server_to_client.json + common_types.json
 
-  hydration/                Data hydration (implemented; M3.2/M4/M6)
+  hydration/                Data hydration (implemented; M3.2/M4/M6/M7)
     placeholders.py         Pure {{path}} resolve()/collect()
     service.py              revalidate(): plan-section + BreakAlert (M4), savings-section (M6)
+    speech.py               Pure speech-text extraction for accessible surfaces (M7)
 
-  mcp_servers/              In-process MCP servers (implemented; M3.2/M6)
+  mcp_servers/              In-process MCP servers (implemented; M3.2/M6/M7)
     toolbox.py              Toolbox over in-memory mcp.Client + result normalization
     finance/                get_profile, get_liabilities, get_income_streams,
                             get_subscriptions, get_cash_flow, get_financial_context,
@@ -151,23 +155,26 @@ backend/
     savings/                create_bag, get_bag, list_bags, answer_bag, research_costs,
                             estimate_total, compute_feasibility, refresh_bag,
                             get_savings_snapshot
-    ui/                     persist_ui, hydrate_ui, a2ui_action,
-                            record_negotiation_round, get_negotiation,
+    ui/                     persist_ui (accessible catalog pin + speech), hydrate_ui,
+                            a2ui_action, record_negotiation_round, get_negotiation,
                             get_session, set_session_context
-    # voice/ planned (M7)
+    voice/                  synthesize_speech (cached), transcribe_audio, get_audio
+
+  audio_cache/              Cached TTS assets (git-ignored; .gitkeep tracked)
 
   agent/                    ADK orchestration (implemented; M3.3/M5)
     model.py                GatewayLlm(BaseLlm) -> provider gateway + usage mapping
     tools.py                McpTool(BaseTool) wrappers over the MCP toolbox
     service.py              AgentService: persistent ADK sessions + run_turn (both pillars)
     negotiation.py          NegotiationService: bank/advocate personas, take-control, accept
+    speech.py               SpeechEnricher: synthesize + attach audio for accessible surfaces
 
-  api/                      FastAPI HTTP API (implemented; M3.4/M6)
+  api/                      FastAPI HTTP API (implemented; M3.4/M6/M7)
     app.py                  create_app(): lifespan, CORS, TraceMiddleware, routers
     main.py                 uvicorn entrypoint (`uvicorn api.main:app`)
     dependencies.py         Depends() accessors over app.state
     schemas.py              Pydantic request/response models
-    routers/                session, message, action, ui, negotiation, saving_bags, debug
+    routers/                session, message, action, ui, negotiation, saving_bags, audio, debug
 
   tests/                    Unit tests (stdlib unittest)
     test_local_sqlite.py    Schema + seed + queries
@@ -200,9 +207,13 @@ backend/
     test_savings_tools.py   Saving-bag MCP lifecycle + immutable research snapshots
     test_hydration_savings.py  Savings revalidation + domain-aware hydration
     test_m6_acceptance.py   M6 acceptance: goal -> questions -> researched plan + loan
+    test_voice_providers.py  TTS/STT chains, fallback, null + ElevenLabs httpx2
+    test_voice_tools.py     synthesize/transcribe/cache over MCP
+    test_catalog_voz_color.py  Accessible catalog registry + validation
+    test_accessibility.py   Catalog pinning + speech derivation/hydration
+    test_m7_acceptance.py   M7 acceptance: accessible catalog + audio in/out + contrast
 
   # Planned directories (not created yet):
-  # audio_cache/  pre-warmed TTS assets
   # demo/         DEMO_MODE, golden-path seed, rehearsal harness
 ```
 
@@ -228,7 +239,7 @@ python -m pip install -r requirements.txt
 # 3. Create and seed the local database  ->  ./data/amitie.sqlite3
 python -m db.init
 
-# 4. Run the test suite (107 tests expected to pass)
+# 4. Run the test suite (132 tests expected to pass)
 python -m unittest discover -s tests -t . -v
 ```
 
@@ -250,7 +261,10 @@ Endpoints: `POST /api/session`, `POST /api/message`, `POST /api/action`,
 `GET /api/saving-bags[/{id}]`, `POST /api/saving-bags/{id}/answer`,
 `POST /api/saving-bags/{id}/refresh`), El Revés
 (`POST /api/negotiation/{session_id}/turn`, `.../take-control`),
-`GET /debug/trace/{trace_id}`, `GET /healthz`.
+`GET /api/audio/{asset_id}`, `GET /debug/trace/{trace_id}`, `GET /healthz`.
+
+`POST /api/message` accepts `text` or `audio_b64`; audio is transcribed through
+the `voice` MCP before the agent interprets it (REQ-ACC-04).
 
 ---
 
@@ -273,8 +287,10 @@ must never be committed (`INV-040`).
 | `TTS_PROVIDER` / `TTS_FALLBACK` | e.g. `elevenlabs` / `edge_tts` |
 | `RESEARCH_PROVIDER` / `RESEARCH_FALLBACK` | e.g. `gemini_grounding` / `static_table` |
 | `RESEARCH_TIMEOUT_SECONDS` | Grounding timeout before falling back (default 8) |
+| `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL` | Primary voice selection |
+| `EDGE_TTS_VOICE`, `STT_MODEL`, `WHISPER_MODEL` | Fallback voice/model selection |
+| `AUDIO_CACHE_DIR` | Cached TTS assets (default `./audio_cache`) |
 | `GEMINI_MODEL`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL` | Model selection |
-| `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL` | Voice selection |
 
 Provider selection is environment-only; switching is a config change with no
 code edits (`INV-013`).
@@ -286,15 +302,16 @@ code edits (`INV-013`).
 
 ## 7. Current status
 
-**Milestones 1–2 and all of M3, M4, M5, and M6 are complete.** Persistence,
-deterministic engines, observability, the LLM provider layer with failover, the
-A2UI contract and SDK-schema validation, in-process MCP servers, hydration, the
-ADK agent, the FastAPI HTTP API, the La Mesa mutations (`simulate_plan`,
-proactive `BreakAlert`, repair, deterministic revalidation), El Revés
-(bank/advocate personas, take-control, simulated acceptance), and Saving Bags
-(goal creation, inferred question forms, grounded research with fallback,
-deterministic estimate + feasibility, domain-aware hydration, loan handoff) are
-implemented and covered by tests.
+**Milestones 1–2 and all of M3–M7 are complete.** Persistence, deterministic
+engines, observability, the LLM provider layer with failover, the A2UI contract
+and SDK-schema validation, in-process MCP servers, hydration, the ADK agent, the
+FastAPI HTTP API, the La Mesa mutations (`simulate_plan`, proactive `BreakAlert`,
+repair, deterministic revalidation), El Revés (bank/advocate personas,
+take-control, simulated acceptance), Saving Bags (goal creation, inferred
+question forms, grounded research with fallback, deterministic estimate +
+feasibility, domain-aware hydration, loan handoff), and Voz y Color (automatic
+accessible catalog, speech payloads, cached TTS, STT input, standard/accessible
+contrast) are implemented and covered by tests.
 
 | Layer | Status |
 |---|---|
@@ -305,9 +322,11 @@ implemented and covered by tests.
 | Observability (trace id, logging, traces table, ASGI middleware) | ✅ Implemented, tested |
 | Provider layer — LLM (Gemini → DeepSeek failover) | ✅ Implemented, tested |
 | Provider layer — research (grounding → static table) | ✅ Implemented, tested |
+| Provider layer — voice (ElevenLabs → edge-tts; Gemini → whisper) | ✅ Implemented, tested |
 | A2UI catalog + prompt + validator (M3.1) | ✅ Implemented, tested |
 | A2UI SDK-schema validation (`jsonschema`) | ✅ Implemented, tested |
-| MCP servers — finance + savings + ui (in-process) | ✅ Implemented, tested |
+| A2UI accessible catalog (`amitie.voz-color.v1`) | ✅ Implemented, tested |
+| MCP servers — finance + savings + ui + voice (in-process) | ✅ Implemented, tested |
 | Hydration (placeholders + fresh data) | ✅ Implemented, tested |
 | ADK agent orchestrator (M3.3) | ✅ Implemented, tested |
 | FastAPI HTTP API (M3.4) | ✅ Implemented, tested |
@@ -315,14 +334,13 @@ implemented and covered by tests.
 | Structural revalidation (deterministic) | ✅ Implemented, tested |
 | El Revés negotiation (M5) | ✅ Implemented, tested |
 | Saving Bags — research, estimate, plan, loan handoff (M6) | ✅ Implemented, tested |
-| Voz y Color (accessibility + voice) | ⏳ Planned (M7) |
+| Voz y Color — accessible catalog, speech, TTS/STT (M7) | ✅ Implemented, tested |
 | Caja de Cristal + Kill Test + DEMO_MODE | ⏳ Planned (M8) |
 
-**Test suite:** 107 tests, all passing.
+**Test suite:** 132 tests, all passing.
 
 ### Roadmap
-1. **M7** — Voz y Color (accessibility flags, `voz-color` catalog, voice MCP, audio in/out).
-2. **M8** — Caja de Cristal, Kill Test, `DEMO_MODE`.
+1. **M8** — Caja de Cristal, Kill Test, `DEMO_MODE`, golden-path rehearsal.
 
 ---
 

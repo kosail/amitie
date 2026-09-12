@@ -18,6 +18,7 @@ from providers.base import LLMProvider, ProviderError
 from ui_contract.prompt import build_system_prompt
 
 from .model import GatewayLlm, ModelCallLimitError
+from .speech import SpeechEnricher
 from .tools import build_adk_tools
 
 APP_NAME = "lamina"
@@ -66,6 +67,7 @@ class AgentService:
         self._tracer = tracer
         self._max_calls = max_model_calls
         self._model = GatewayLlm(model="gateway", provider=provider, max_calls=max_model_calls)
+        self._speech = SpeechEnricher(toolbox)
         self._runner: InMemoryRunner | None = None
         self._captured: dict[str, dict[str, Any]] = {}
 
@@ -166,10 +168,13 @@ class AgentService:
                 "issues": captured.get("issues", []),
                 "assistant_text": assistant_text,
             }
+        captured = await self._speech.enrich(captured, user_id=user_id)
         return {
             "status": "ok",
             "surface_id": captured.get("surface_id"),
             "a2ui": captured.get("a2ui", []),
+            "catalog_id": captured.get("catalog_id"),
+            "audio_ref": captured.get("audio_ref"),
             "assistant_text": assistant_text,
         }
 

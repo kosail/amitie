@@ -19,6 +19,7 @@ from providers.base import LLMProvider, ProviderError
 from ui_contract.catalog import CATALOG_ID
 
 from .model import GatewayLlm, ModelCallLimitError
+from .speech import SpeechEnricher
 from .tools import build_adk_tools
 
 APP_NAME = "el_reves"
@@ -75,6 +76,7 @@ class NegotiationService:
         self._max_calls = max_model_calls
         self._max_rounds = max_rounds
         self._model = GatewayLlm(model="gateway", provider=provider, max_calls=max_model_calls)
+        self._speech = SpeechEnricher(toolbox)
         self._tools: list[Any] | None = None
         self._captured: dict[str, dict[str, Any]] = {}
 
@@ -143,6 +145,7 @@ class NegotiationService:
             "round": len(rounds),
             "surface_id": surface.get("surface_id"),
             "a2ui": surface.get("a2ui", []),
+            "audio_ref": surface.get("audio_ref"),
             "assistant_text": "",
         }
 
@@ -198,7 +201,7 @@ class NegotiationService:
                 "status": "error",
                 "issues": (captured or {}).get("issues", ["the persona did not call persist_ui"]),
             }
-        return captured
+        return await self._speech.enrich(captured, user_id=user_id)
 
     async def accept(
         self, *, session_id: str, user_id: str, offer: dict[str, Any]
@@ -227,9 +230,11 @@ class NegotiationService:
         )
         if persisted.get("status") != "ok":
             return {"status": "error", "issues": persisted.get("issues", ["could not persist"])}
+        persisted = await self._speech.enrich(persisted, user_id=user_id)
         return {
             "status": "ok",
             "surface_id": persisted.get("surface_id"),
             "a2ui": persisted.get("a2ui", []),
+            "audio_ref": persisted.get("audio_ref"),
             "assistant_text": "Plan confirmado.",
         }

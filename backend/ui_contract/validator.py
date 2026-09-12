@@ -12,11 +12,11 @@ friendlier messages. `validate_messages` runs JSON Schema first, then semantics.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Protocol, Sequence
+from typing import Any, Mapping, Protocol, Sequence
 
 from jsonschema.exceptions import ValidationError
 
-from .catalog import CATALOG, Catalog
+from .catalog import CATALOGS, STANDARD_CATALOG_ID, Catalog
 from .schema_registry import message_validator
 
 _NUMBER_TYPES = (int, float)
@@ -88,28 +88,40 @@ def _check_prop(token: str, value: Any) -> str | None:
 
 
 class CatalogValidator:
-    def __init__(self, catalog: Catalog = CATALOG) -> None:
-        self._catalog = catalog
+    def __init__(
+        self, catalog: Catalog | None = None, catalogs: Mapping[str, Catalog] | None = None
+    ) -> None:
+        if catalog is not None:
+            self._catalogs = {catalog.catalog_id: catalog}
+        elif catalogs is not None:
+            self._catalogs = dict(catalogs)
+        else:
+            self._catalogs = dict(CATALOGS)
+        self._default = self._catalogs.get(STANDARD_CATALOG_ID) or next(iter(self._catalogs.values()))
+
+    def _catalog_for_surface(self, surfaces: dict[str, str], surface_id: Any) -> Catalog:
+        catalog_id = surfaces.get(surface_id) if isinstance(surface_id, str) else None
+        return self._catalogs.get(catalog_id) or self._default
 
     def validate(self, messages: Any) -> ValidationResult:
         issues: list[str] = []
         if not isinstance(messages, list) or not messages:
             return ValidationResult(False, ("payload must be a non-empty list of A2UI messages",))
 
-        surfaces: set[str] = set()
+        surfaces: dict[str, str] = {}
         for index, message in enumerate(messages):
             location = f"messages[{index}]"
             if not isinstance(message, dict):
                 issues.append(f"{location}: message must be an object")
                 continue
-            if message.get("version") != self._catalog.version:
-                issues.append(f"{location}: version must be {self._catalog.version!r}")
+            if message.get("version") != self._default.version:
+                issues.append(f"{location}: version must be {self._default.version!r}")
             kinds = [key for key in message if key != "version"]
             if len(kinds) != 1:
                 issues.append(f"{location}: exactly one message type is required, found {kinds}")
                 continue
             kind = kinds[0]
-            if kind not in self._catalog.messages:
+            if kind not in self._default.messages:
                 issues.append(f"{location}: unknown message type {kind!r}")
                 continue
             body = message[kind]
@@ -125,22 +137,27 @@ class CatalogValidator:
             issues.append(f"{location}: surfaceId must be a string")
 
     def _validate_create_surface(
-        self, body: dict, location: str, surfaces: set[str], issues: list[str]
+        self, body: dict, location: str, surfaces: dict[str, str], issues: list[str]
     ) -> None:
         self._require_surface(body, location, issues)
         surface_id = body.get("surfaceId")
-        if isinstance(surface_id, str):
-            surfaces.add(surface_id)
         catalog_id = body.get("catalogId")
-        if catalog_id not in (None, self._catalog.catalog_id):
+        if catalog_id is None:
+            if isinstance(surface_id, str):
+                surfaces[surface_id] = self._default.catalog_id
+        elif not isinstance(catalog_id, str) or catalog_id not in self._catalogs:
+            allowed = ", ".join(sorted(self._catalogs))
             issues.append(
-                f"{location}: unknown catalogId {catalog_id!r} (expected {self._catalog.catalog_id!r})"
+                f"{location}: unknown catalogId {catalog_id!r} (expected one of {allowed})"
             )
+        elif isinstance(surface_id, str):
+            surfaces[surface_id] = catalog_id
 
     def _validate_update_components(
-        self, body: dict, location: str, surfaces: set[str], issues: list[str]
+        self, body: dict, location: str, surfaces: dict[str, str], issues: list[str]
     ) -> None:
         self._require_surface(body, location, issues)
+        catalog = self._catalog_for_surface(surfaces, body.get("surfaceId"))
         components = body.get("components")
         if not isinstance(components, list) or not components:
             issues.append(f"{location}: components must be a non-empty list")
@@ -165,8 +182,11 @@ class CatalogValidator:
             if not isinstance(component_type, str):
                 issues.append(f"{entry_location}: 'component' must be a component type string")
                 continue
-            if component_type not in self._catalog.components:
-                issues.append(f"{entry_location}: unknown component {component_type!r}")
+            if component_type not in catalog.components:
+                issues.append(
+                    f"{entry_location}: unknown component {component_type!r} for catalog "
+                    f"{catalog.catalog_id!r}"
+                )
                 continue
             props = {
                 key: value for key, value in component.items() if key not in ("id", "component")
@@ -174,7 +194,7 @@ class CatalogValidator:
             parsed.append((component_id, component_type, props, entry_location))
 
         for component_id, component_type, props, entry_location in parsed:
-            spec = self._catalog.components[component_type]
+            spec = catalog.components[component_type]
             for required in spec.required:
                 if required not in props:
                     issues.append(
@@ -184,7 +204,7 @@ class CatalogValidator:
                 if name not in props:
                     continue
                 if token == "action":
-                    issues.extend(self._validate_action(props[name], entry_location))
+                    issues.extend(self._validate_action(props[name], entry_location, catalog))
                     continue
                 problem = _check_prop(token, props[name])
                 if problem:
@@ -197,7 +217,7 @@ class CatalogValidator:
                             f"{entry_location}.{component_type}: unknown child reference {child!r}"
                         )
 
-    def _validate_action(self, action: Any, location: str) -> list[str]:
+    def _validate_action(self, action: Any, location: str, catalog: Catalog) -> list[str]:
         issues: list[str] = []
         if not isinstance(action, dict):
             return [f"{location}.action: must be an object"]
@@ -205,7 +225,7 @@ class CatalogValidator:
         if not isinstance(event, dict):
             return [f"{location}.action: must contain an 'event' object"]
         name = event.get("name")
-        if name not in self._catalog.actions:
+        if name not in catalog.actions:
             issues.append(f"{location}.action.event.name: unknown action {name!r}")
         context = event.get("context", {})
         if not isinstance(context, dict):
@@ -213,19 +233,19 @@ class CatalogValidator:
         return issues
 
     def _validate_update_data_model(
-        self, body: dict, location: str, surfaces: set[str], issues: list[str]
+        self, body: dict, location: str, surfaces: dict[str, str], issues: list[str]
     ) -> None:
         self._require_surface(body, location, issues)
         if not isinstance(body.get("path"), str):
             issues.append(f"{location}: path must be a JSON Pointer string")
 
     def _validate_delete_surface(
-        self, body: dict, location: str, surfaces: set[str], issues: list[str]
+        self, body: dict, location: str, surfaces: dict[str, str], issues: list[str]
     ) -> None:
         self._require_surface(body, location, issues)
         surface_id = body.get("surfaceId")
         if isinstance(surface_id, str):
-            surfaces.discard(surface_id)
+            surfaces.pop(surface_id, None)
 
 
 class JsonschemaValidator:

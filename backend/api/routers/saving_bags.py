@@ -58,6 +58,8 @@ def _response(result: dict, **extra) -> SavingBagResponse:
         assistant_text=result.get("assistant_text", ""),
         issues=result.get("issues", []),
         message=result.get("message"),
+        catalog_id=result.get("catalog_id"),
+        audio_ref=result.get("audio_ref"),
         **extra,
     )
 
