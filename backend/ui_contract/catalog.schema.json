@@ -33,7 +33,9 @@
         { "$ref": "#/components/DebtNode" },
         { "$ref": "#/components/TradeoffScale" },
         { "$ref": "#/components/BreakAlert" },
-        { "$ref": "#/components/PlanTable" }
+        { "$ref": "#/components/PlanTable" },
+        { "$ref": "#/components/OfferCard" },
+        { "$ref": "#/components/NegotiationTranscript" }
       ]
     }
   },
@@ -315,6 +317,49 @@
             }
           },
           "required": ["component", "months"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "OfferCard": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "OfferCard" },
+            "actor": { "type": "string", "enum": ["bank", "advocate"] },
+            "headline": { "type": "string" },
+            "terms": {
+              "type": "object",
+              "properties": {
+                "apr": { "type": "number" },
+                "months": { "type": "integer" },
+                "monthlyPayment": { "type": "number" },
+                "totalCost": { "type": "number" }
+              }
+            },
+            "action": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/Action" }
+          },
+          "required": ["component", "actor", "headline", "terms"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "NegotiationTranscript": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "NegotiationTranscript" },
+            "rounds": { "type": "array", "items": { "type": "object" } }
+          },
+          "required": ["component", "rounds"]
         }
       ],
       "unevaluatedProperties": false

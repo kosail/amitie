@@ -110,6 +110,7 @@ backend/
     break_detection.py      detect_plan_breaks() → first negative-cash month
     feasibility.py          project_completion(), compute_feasibility(), capacity
     planning.py             context → engine adapter + plan/break payloads (M4)
+    offer.py                lender-policy offer generation + feasibility (M5)
 
   observability/            Traceability (implemented; INV-018)
     context.py              Per-request trace id via contextvars
@@ -141,21 +142,25 @@ backend/
     toolbox.py              Toolbox over in-memory mcp.Client + result normalization
     finance/                get_profile, get_liabilities, get_income_streams,
                             get_subscriptions, get_cash_flow, get_financial_context,
-                            simulate_plan, detect_plan_breaks
-    ui/                     persist_ui, hydrate_ui, a2ui_action
+                            simulate_plan, detect_plan_breaks,
+                            get_lender_policies, generate_offer, evaluate_offer, accept_offer
+    ui/                     persist_ui, hydrate_ui, a2ui_action,
+                            record_negotiation_round, get_negotiation,
+                            get_session, set_session_context
     # savings/, voice/ planned
 
-  agent/                    ADK orchestration (implemented; M3.3)
+  agent/                    ADK orchestration (implemented; M3.3/M5)
     model.py                GatewayLlm(BaseLlm) -> provider gateway + usage mapping
     tools.py                McpTool(BaseTool) wrappers over the MCP toolbox
     service.py              AgentService: persistent ADK sessions + run_turn
+    negotiation.py          NegotiationService: bank/advocate personas, take-control, accept
 
   api/                      FastAPI HTTP API (implemented; M3.4)
     app.py                  create_app(): lifespan, CORS, TraceMiddleware, routers
     main.py                 uvicorn entrypoint (`uvicorn api.main:app`)
     dependencies.py         Depends() accessors over app.state
     schemas.py              Pydantic request/response models
-    routers/                session, message, action, ui, debug
+    routers/                session, message, action, ui, negotiation, debug
 
   tests/                    Unit tests (stdlib unittest)
     test_local_sqlite.py    Schema + seed + queries
@@ -179,6 +184,10 @@ backend/
     test_finance_plan_tools.py  simulate_plan + detect_plan_breaks
     test_revalidation.py    BreakAlert insert/remove + version bump (idempotent)
     test_m4_acceptance.py   M4 acceptance: BreakAlert mutation -> repair
+    test_offer_engine.py    Offer generation + feasibility
+    test_offer_tools.py     Offer MCP tools over the seeded database
+    test_negotiation_service.py  Personas, rounds, take-control
+    test_m5_acceptance.py   M5 acceptance: negotiation -> take-control -> accept
 
   # Planned directories (not created yet):
   # audio_cache/  pre-warmed TTS assets
@@ -259,12 +268,13 @@ code edits (`INV-013`).
 
 ## 7. Current status
 
-**Milestones 1–2 and all of M3 and M4 are complete.** Persistence, deterministic
-engines, observability, the LLM provider layer with failover, the A2UI contract
-and SDK-schema validation, in-process MCP servers, hydration, the ADK agent, the
-FastAPI HTTP API, and the La Mesa mutations (`simulate_plan`, proactive
-`BreakAlert`, repair, and deterministic structural revalidation) are implemented
-and covered by tests.
+**Milestones 1–2 and all of M3, M4, and M5 are complete.** Persistence,
+deterministic engines, observability, the LLM provider layer with failover, the
+A2UI contract and SDK-schema validation, in-process MCP servers, hydration, the
+ADK agent, the FastAPI HTTP API, the La Mesa mutations (`simulate_plan`,
+proactive `BreakAlert`, repair, deterministic revalidation), and El Revés
+(bank/advocate personas, take-control, simulated acceptance) are implemented and
+covered by tests.
 
 | Layer | Status |
 |---|---|
@@ -282,16 +292,16 @@ and covered by tests.
 | FastAPI HTTP API (M3.4) | ✅ Implemented, tested |
 | La Mesa mutations (`BreakAlert`, repair) (M4) | ✅ Implemented, tested |
 | Structural revalidation (deterministic) | ✅ Implemented, tested |
-| El Revés negotiation | ⏳ Planned (M5) |
+| El Revés negotiation (M5) | ✅ Implemented, tested |
 | Saving Bags | ⏳ Planned (M6) |
 | Voz y Color (accessibility + voice) | ⏳ Planned (M7) |
 | Caja de Cristal + Kill Test + DEMO_MODE | ⏳ Planned (M8) |
 
-**Test suite:** 78 tests, all passing.
+**Test suite:** 85 tests, all passing.
 
 ### Roadmap
-1. **M5** — El Revés negotiation (bank/advocate personas, offer/counter, take control).
-2. **M6–M8** — Saving Bags, Voz y Color, Caja de Cristal + Kill Test.
+1. **M6** — Saving Bags (goal creation, grounded research, feasibility, polling).
+2. **M7–M8** — Voz y Color, Caja de Cristal + Kill Test.
 
 ---
 

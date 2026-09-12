@@ -107,6 +107,7 @@ Required by milestone:
 
 - **M3:** `Column`, `Row`, `Card`, `Text`, `Heading`, `Divider`, `Badge`, `Button`, `ChoiceGroup`, `Slider`, `DebtNode`, `TradeoffScale`.
 - **M4 (added):** `BreakAlert`, `PlanTable`.
+- **M5 (added):** `OfferCard`, `NegotiationTranscript`.
 
 Everything else in §6 is reserved for later milestones and must not be emitted until the frontend confirms support. Adding components is additive (see §10), so the catalog ID remains `amitie.standard.v1`.
 

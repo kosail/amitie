@@ -71,12 +71,24 @@ def run_simulation(
     expense_reduction: float = 0.0,
     horizon_months: int = 36,
     events: Mapping[Any, Any] | None = None,
+    offer: Mapping[str, Any] | None = None,
 ) -> Plan:
     income, expenses = monthly_cashflow(context)
+    liabilities = liabilities_from_context(context)
+    if offer:
+        liabilities = [
+            Liability(
+                id="offer",
+                creditor=str(offer.get("creditor") or "Oferta"),
+                balance=float(offer.get("principal") or 0.0),
+                apr=float(offer.get("apr") or 0.0),
+                min_payment=float(offer.get("monthlyPayment") or 0.0),
+            )
+        ]
     return simulate(
         monthly_income=income + float(extra_income or 0.0),
         monthly_expenses=max(expenses - float(expense_reduction or 0.0), 0.0),
-        liabilities=liabilities_from_context(context),
+        liabilities=liabilities,
         strategy=strategy,
         horizon_months=int(horizon_months or 36),
         extra_payment=float(extra_payment or 0.0),
@@ -121,6 +133,7 @@ def build_plan(context: Mapping[str, Any], simulation: Mapping[str, Any] | None 
         expense_reduction=float(simulation.get("expense_reduction") or 0.0),
         horizon_months=int(simulation.get("horizon_months") or 36),
         events=simulation.get("events"),
+        offer=simulation.get("offer"),
     )
     breakdown = break_payload(plan)
     payload = plan_payload(plan)

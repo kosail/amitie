@@ -25,9 +25,9 @@
 - [x] **REQ-LM-04** — The system detects when a plan fails within the horizon (`detect_plan_breaks`) and exposes the failure month.
 - [x] **REQ-LM-05** — When a plan fails, the agent emits a new, unprompted `BreakAlert` surface the user did not request. **(Mutation #1)**
 - [x] **REQ-LM-06** — The agent proposes a repair, re-simulates, and re-flows the plan interface, clearing the break. **(Mutation #2)**
-- [ ] **REQ-LM-07** — `El Revés`: two personas (`bank` and `advocate`) negotiate over at least two rounds; each round is emitted as an A2UI update and recorded in `negotiation_rounds`.
-- [ ] **REQ-LM-08** — The user can seize the negotiation via a "take control" action, replacing the advocate persona with direct edits.
-- [ ] **REQ-LM-09** — Accepting an offer executes an MCP action and emits a final confirmed-plan interface with next steps.
+- [x] **REQ-LM-07** — `El Revés`: two personas (`bank` and `advocate`) negotiate over at least two rounds; each round is emitted as an A2UI update and recorded in `negotiation_rounds`.
+- [x] **REQ-LM-08** — The user can seize the negotiation via a "take control" action, replacing the advocate persona with direct edits.
+- [x] **REQ-LM-09** — Accepting an offer executes an MCP action and emits a final confirmed-plan interface with next steps.
 
 ## 3. Saving Bags (SECONDARY CORE)
 
@@ -73,7 +73,7 @@
 - [ ] **REQ-API-03** `POST /api/action` — `{surface_id, name, source_component_id, context}` → `{a2ui[]}`
 - [ ] **REQ-API-04** `GET /api/ui/{surface_id}` — hydration + revalidation → `{a2ui[]}`
 - [ ] **REQ-API-05** Saving bags: `POST /api/saving-bags`, `GET /api/saving-bags[/{id}]`, `POST /api/saving-bags/{id}/answer`, `POST /api/saving-bags/{id}/refresh`
-- [ ] **REQ-API-06** `POST /api/negotiation/{session}/turn`, `POST /api/negotiation/{session}/take-control`
+- [x] **REQ-API-06** `POST /api/negotiation/{session}/turn`, `POST /api/negotiation/{session}/take-control`
 - [ ] **REQ-API-07** `GET /api/audio/{asset_id}`
 - [ ] **REQ-API-08** `GET /debug/kill-test/{surface_id}`, `GET /debug/trace/{trace_id}`
 

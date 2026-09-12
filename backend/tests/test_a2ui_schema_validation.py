@@ -24,6 +24,8 @@ M3_SUBSET = {
     "TradeoffScale",
     "BreakAlert",
     "PlanTable",
+    "OfferCard",
+    "NegotiationTranscript",
 }
 
 SAMPLE = [

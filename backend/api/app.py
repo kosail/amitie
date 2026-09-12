@@ -13,6 +13,7 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from agent.negotiation import NegotiationService
 from agent.service import AgentService
 from config import Settings, load_dotenv
 from db.local_sqlite import LocalSQLiteDatabase
@@ -25,7 +26,7 @@ from observability.tracing import Tracer
 from providers.base import LLMProvider
 from providers.registry import build_llm_gateway
 
-from .routers import action, debug, message, session, ui
+from .routers import action, debug, message, negotiation, session, ui
 
 
 def create_app(
@@ -53,11 +54,18 @@ def create_app(
             tracer=tracer,
             max_model_calls=resolved.agent_max_model_calls,
         )
+        negotiation_service = NegotiationService(
+            provider=llm,
+            toolbox=toolbox,
+            tracer=tracer,
+            max_model_calls=resolved.agent_max_model_calls,
+        )
         app.state.settings = resolved
         app.state.database = database
         app.state.tracer = tracer
         app.state.toolbox = toolbox
         app.state.agent_service = agent_service
+        app.state.negotiation_service = negotiation_service
         try:
             yield
         finally:
@@ -73,6 +81,7 @@ def create_app(
     app.include_router(session.router)
     app.include_router(message.router)
     app.include_router(action.router)
+    app.include_router(negotiation.router)
     app.include_router(ui.router)
     app.include_router(debug.router)
 

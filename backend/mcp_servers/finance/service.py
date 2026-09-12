@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from db.port import DatabasePort
+from engine import offer as offer_engine
 from engine import planning
 
 
@@ -191,4 +192,57 @@ async def detect_plan_breaks(
         "break": breakdown,
         "breakMonth": breakdown["month"] if breakdown else None,
         "shortfall": breakdown["shortfall"] if breakdown else 0.0,
+    }
+
+
+async def get_lender_policies(database: DatabasePort) -> dict[str, Any]:
+    rows = await database.fetch_all(
+        "SELECT id, creditor, strategy, min_settlement_pct, max_months, apr_floor, "
+        "accepts_consolidation FROM lender_policies ORDER BY creditor, strategy"
+    )
+    return {
+        "policies": [
+            {
+                "id": row["id"],
+                "creditor": row["creditor"],
+                "strategy": row["strategy"],
+                "minSettlementPct": row["min_settlement_pct"],
+                "maxMonths": row["max_months"],
+                "aprFloor": row["apr_floor"],
+                "acceptsConsolidation": bool(row["accepts_consolidation"]),
+            }
+            for row in rows
+        ]
+    }
+
+
+async def generate_offer(
+    database: DatabasePort,
+    user_id: str,
+    *,
+    creditor: str | None = None,
+    strategy: str = "consolidation",
+) -> dict[str, Any]:
+    context = await financial_context(database, user_id)
+    policies = (await get_lender_policies(database))["policies"]
+    return offer_engine.generate_offer(context, policies, creditor=creditor, strategy=strategy)
+
+
+async def evaluate_offer(
+    database: DatabasePort, user_id: str, offer: dict[str, Any]
+) -> dict[str, Any]:
+    context = await financial_context(database, user_id)
+    return offer_engine.evaluate_offer(context, offer)
+
+
+async def accept_offer(
+    database: DatabasePort, user_id: str, offer: dict[str, Any]
+) -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "offer": offer,
+        "nextSteps": [
+            "Firma el convenio digital",
+            "Revisa tu primer pago en la app",
+        ],
     }

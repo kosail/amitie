@@ -4,11 +4,17 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from agent.negotiation import NegotiationService
 from agent.service import AgentService
 from db.port import DatabasePort
 from mcp_servers.toolbox import Toolbox
 
-from ..dependencies import get_agent_service, get_database, get_toolbox
+from ..dependencies import (
+    get_agent_service,
+    get_database,
+    get_negotiation_service,
+    get_toolbox,
+)
 from ..schemas import ActionRequest, AgentResponse
 
 router = APIRouter(prefix="/api", tags=["action"])
@@ -20,6 +26,7 @@ async def post_action(
     database: DatabasePort = Depends(get_database),
     toolbox: Toolbox = Depends(get_toolbox),
     agent: AgentService = Depends(get_agent_service),
+    negotiation: NegotiationService = Depends(get_negotiation_service),
 ) -> AgentResponse:
     surface = await database.fetch_one(
         "SELECT id, user_id FROM generated_ui WHERE id = ?", (payload.surface_id,)
@@ -27,6 +34,19 @@ async def post_action(
     if surface is None:
         raise HTTPException(status_code=404, detail="unknown surface")
     user_id = surface["user_id"]
+
+    if payload.name == "accept_offer":
+        offer = payload.context.get("offer") or {}
+        session_id = payload.context.get("session_id")
+        if not session_id:
+            latest = await database.fetch_one(
+                "SELECT id FROM sessions WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
+                (user_id,),
+            )
+            session_id = latest["id"] if latest else f"user:{user_id}"
+        return AgentResponse(
+            **await negotiation.accept(session_id=session_id, user_id=user_id, offer=offer)
+        )
 
     # Record the interaction through MCP (the only door to actions).
     await toolbox.call(

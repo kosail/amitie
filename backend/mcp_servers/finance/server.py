@@ -97,4 +97,28 @@ def build_finance_server(database: DatabasePort) -> MCPServer:
             events=events,
         )
 
+    @server.tool()
+    async def get_lender_policies() -> dict[str, Any]:
+        """Return the bank's negotiation policies (bounds the bank may offer within)."""
+        return await service.get_lender_policies(database)
+
+    @server.tool()
+    async def generate_offer(
+        user_id: str, creditor: str = "", strategy: str = "consolidation"
+    ) -> dict[str, Any]:
+        """Deterministically build an offer within the lender's policy bounds."""
+        return await service.generate_offer(
+            database, user_id, creditor=creditor or None, strategy=strategy
+        )
+
+    @server.tool()
+    async def evaluate_offer(user_id: str, offer: dict[str, Any]) -> dict[str, Any]:
+        """Check deterministically whether the user can actually pay an offer."""
+        return await service.evaluate_offer(database, user_id, offer)
+
+    @server.tool()
+    async def accept_offer(user_id: str, offer: dict[str, Any]) -> dict[str, Any]:
+        """Simulated acceptance of an offer; returns confirmation and next steps."""
+        return await service.accept_offer(database, user_id, offer)
+
     return server

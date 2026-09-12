@@ -63,4 +63,28 @@ def build_ui_server(database: DatabasePort) -> MCPServer:
             timestamp=timestamp,
         )
 
+    @server.tool()
+    async def record_negotiation_round(
+        session_id: str, actor: str, offer: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Record one El Reves negotiation round (actor bank/advocate/user)."""
+        return await service.record_negotiation_round(
+            database, session_id=session_id, actor=actor, offer=offer
+        )
+
+    @server.tool()
+    async def get_negotiation(session_id: str) -> dict[str, Any]:
+        """Return the recorded negotiation rounds for a session."""
+        return await service.get_negotiation(database, session_id)
+
+    @server.tool()
+    async def get_session(session_id: str) -> dict[str, Any]:
+        """Return a session row and its context."""
+        return await service.get_session(database, session_id)
+
+    @server.tool()
+    async def set_session_context(session_id: str, context: dict[str, Any]) -> dict[str, Any]:
+        """Merge fields into a session's context (used for negotiation state)."""
+        return await service.set_session_context(database, session_id, context)
+
     return server

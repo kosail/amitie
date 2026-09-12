@@ -129,6 +129,21 @@
         "months": "any",
         "breakMonth": "any"
       }
+    },
+    "OfferCard": {
+      "required": ["actor", "headline", "terms"],
+      "props": {
+        "actor": "enum:bank,advocate",
+        "headline": "string",
+        "terms": "object",
+        "action": "action"
+      }
+    },
+    "NegotiationTranscript": {
+      "required": ["rounds"],
+      "props": {
+        "rounds": "array"
+      }
     }
   }
 }

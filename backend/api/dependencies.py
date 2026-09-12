@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 from fastapi import Request
 
+from agent.negotiation import NegotiationService
 from agent.service import AgentService
 from db.port import DatabasePort
 from mcp_servers.toolbox import Toolbox
@@ -34,3 +35,7 @@ def get_toolbox(request: Request) -> Toolbox:
 
 def get_agent_service(request: Request) -> AgentService:
     return request.app.state.agent_service
+
+
+def get_negotiation_service(request: Request) -> NegotiationService:
+    return request.app.state.negotiation_service

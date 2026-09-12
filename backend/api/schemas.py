@@ -36,6 +36,13 @@ class AgentResponse(BaseModel):
     assistant_text: str = ""
     issues: list[str] = Field(default_factory=list)
     message: str | None = None
+    actor: str | None = None
+    round: int | None = None
+
+
+class NegotiationRequest(BaseModel):
+    user_id: str = "u_ana"
+    position: dict[str, Any] = Field(default_factory=dict)
 
 
 class UiResponse(BaseModel):

@@ -150,3 +150,82 @@ async def a2ui_action(
         ),
     )
     return {"status": "ok", "surface_id": surface_id, "action": name, "context": context or {}}
+
+
+async def record_negotiation_round(
+    database: DatabasePort,
+    *,
+    session_id: str,
+    actor: str,
+    offer: dict[str, Any],
+) -> dict[str, Any]:
+    row = await database.fetch_one(
+        "SELECT COALESCE(MAX(round_no), 0) AS n FROM negotiation_rounds WHERE session_id = ?",
+        (session_id,),
+    )
+    round_no = int(row["n"]) + 1
+    await database.execute(
+        "INSERT INTO negotiation_rounds (id, session_id, round_no, actor, offer_json, created_at) "
+        "VALUES (?,?,?,?,?,?)",
+        (
+            uuid.uuid4().hex,
+            session_id,
+            round_no,
+            actor,
+            json.dumps(offer or {}, ensure_ascii=False),
+            _now(),
+        ),
+    )
+    return {"status": "ok", "round": round_no, "actor": actor, "offer": offer or {}}
+
+
+async def get_negotiation(database: DatabasePort, session_id: str) -> dict[str, Any]:
+    rows = await database.fetch_all(
+        "SELECT round_no, actor, offer_json FROM negotiation_rounds WHERE session_id = ? "
+        "ORDER BY round_no",
+        (session_id,),
+    )
+    return {
+        "status": "ok",
+        "rounds": [
+            {
+                "round": row["round_no"],
+                "actor": row["actor"],
+                "offer": json.loads(row["offer_json"] or "{}"),
+            }
+            for row in rows
+        ],
+    }
+
+
+async def get_session(database: DatabasePort, session_id: str) -> dict[str, Any]:
+    row = await database.fetch_one(
+        "SELECT id, user_id, active_surface_id, context_json FROM sessions WHERE id = ?",
+        (session_id,),
+    )
+    if row is None:
+        return {"status": "error", "issues": [f"unknown session {session_id!r}"]}
+    return {
+        "status": "ok",
+        "session_id": row["id"],
+        "user_id": row["user_id"],
+        "active_surface_id": row["active_surface_id"],
+        "context": json.loads(row["context_json"] or "{}"),
+    }
+
+
+async def set_session_context(
+    database: DatabasePort, session_id: str, context: dict[str, Any]
+) -> dict[str, Any]:
+    row = await database.fetch_one(
+        "SELECT context_json FROM sessions WHERE id = ?", (session_id,)
+    )
+    if row is None:
+        return {"status": "error", "issues": [f"unknown session {session_id!r}"]}
+    merged = json.loads(row["context_json"] or "{}")
+    merged.update(context or {})
+    await database.execute(
+        "UPDATE sessions SET context_json = ?, updated_at = ? WHERE id = ?",
+        (json.dumps(merged, ensure_ascii=False), _now(), session_id),
+    )
+    return {"status": "ok", "session_id": session_id, "context": merged}
