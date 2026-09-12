@@ -99,13 +99,20 @@ class NegotiationService:
     ) -> dict[str, Any]:
         session = await self._toolbox.call("get_session", {"session_id": session_id})
         if session.get("status") != "ok":
-            return {"status": "error", "issues": session.get("issues", ["unknown session"])}
+            return {
+                "status": "error",
+                "error_code": "negotiation_error",
+                "retryable": False,
+                "issues": session.get("issues", ["unknown session"]),
+            }
         negotiation = dict((session.get("context") or {}).get("negotiation") or {})
         rounds = (await self._toolbox.call("get_negotiation", {"session_id": session_id}))["rounds"]
 
         if len(rounds) >= self._max_rounds:
             return {
                 "status": "error",
+                "error_code": "negotiation_error",
+                "retryable": False,
                 "issues": [f"negotiation reached max rounds ({self._max_rounds})"],
             }
 
@@ -193,12 +200,19 @@ class NegotiationService:
             error = f"{type(exc).__name__}: {exc}"
 
         if error is not None:
-            return {"status": "error", "message": error}
+            return {
+                "status": "error",
+                "error_code": "provider_unavailable",
+                "retryable": True,
+                "message": error,
+            }
 
         captured = self._captured.get("persist_ui")
         if captured is None or captured.get("status") != "ok":
             return {
                 "status": "error",
+                "error_code": "agent_error",
+                "retryable": True,
                 "issues": (captured or {}).get("issues", ["the persona did not call persist_ui"]),
             }
         return await self._speech.enrich(captured, user_id=user_id)
@@ -208,7 +222,12 @@ class NegotiationService:
     ) -> dict[str, Any]:
         ack = await self._toolbox.call("accept_offer", {"user_id": user_id, "offer": offer})
         if ack.get("status") != "ok":
-            return {"status": "error", "issues": ack.get("issues", ["offer rejected"])}
+            return {
+                "status": "error",
+                "error_code": "negotiation_error",
+                "retryable": False,
+                "issues": ack.get("issues", ["offer rejected"]),
+            }
 
         await self._toolbox.call(
             "set_session_context",
@@ -229,7 +248,12 @@ class NegotiationService:
             },
         )
         if persisted.get("status") != "ok":
-            return {"status": "error", "issues": persisted.get("issues", ["could not persist"])}
+            return {
+                "status": "error",
+                "error_code": "agent_error",
+                "retryable": True,
+                "issues": persisted.get("issues", ["could not persist"]),
+            }
         persisted = await self._speech.enrich(persisted, user_id=user_id)
         return {
             "status": "ok",

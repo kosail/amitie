@@ -35,10 +35,17 @@ async def post_message(
         )
         if transcription.get("status") != "ok":
             issues = transcription.get("issues") or ["could not transcribe audio"]
-            return AgentResponse(status="error", message="; ".join(issues))
+            return AgentResponse(
+                status="error",
+                error_code="transcription_failed",
+                retryable=True,
+                message="; ".join(issues),
+            )
         text = transcription.get("text")
     if not text:
-        return AgentResponse(status="error", message="text or audio is required")
+        return AgentResponse(
+            status="error", error_code="bad_request", retryable=False, message="text or audio is required"
+        )
 
     result = await agent.run_turn(
         session_id=payload.session_id, user_id=session["user_id"], text=text

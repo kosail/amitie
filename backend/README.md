@@ -95,7 +95,7 @@ Data never leaves the host: the tunnel only forwards HTTP to the local process
 
 ```
 backend/
-  config.py                 Settings loaded from .env (DATABASE_PATH, DEMO_MODE, LOG_LEVEL)
+  config.py                 Settings loaded from .env (DATABASE_PATH, LOG_LEVEL)
   requirements.txt          Python dependencies
   .env / .env.example       Local configuration and secrets (real .env is git-ignored)
   data/                     Local SQLite file lives here (git-ignored)
@@ -215,7 +215,7 @@ backend/
     test_m7_acceptance.py   M7 acceptance: accessible catalog + audio in/out + contrast
     test_assumptions.py     Caja de Cristal panel + editable assumption
     test_kill_test.py       Frozen artifact survives live DB changes
-    test_demo_mode.py       DEMO_MODE re-serves the last surface on provider failure
+    test_provider_failure.py  Provider failure returns a clear, retryable error (no stale surface)
     test_demo_golden_path.py  Full journey ordering + <90s budget
 
   demo/                     Golden-path rehearsal runner (`python -m demo.golden_path`)
@@ -243,7 +243,7 @@ python -m pip install -r requirements.txt
 # 3. Create and seed the local database  ->  ./data/amitie.sqlite3
 python -m db.init
 
-# 4. Run the test suite (139 tests expected to pass)
+# 4. Run the test suite (142 tests expected to pass)
 python -m unittest discover -s tests -t . -v
 ```
 
@@ -281,7 +281,6 @@ must never be committed (`INV-040`).
 | Variable | Purpose |
 |---|---|
 | `DATABASE_PATH` | SQLite file path (default `./data/amitie.sqlite3`) |
-| `DEMO_MODE` | Graceful degradation: re-serve the last generated surface on provider failure (default on) |
 | `LOG_LEVEL` | Log verbosity |
 | `AGENT_MAX_MODEL_CALLS` | Per-turn model-call budget (default 6) |
 | `GEMINI_API_KEY` | Primary LLM (and STT / research grounding) |
@@ -317,8 +316,8 @@ question forms, grounded research with fallback, deterministic estimate +
 feasibility, domain-aware hydration, loan handoff), Voz y Color (automatic
 accessible catalog, speech payloads, cached TTS, STT input, standard/accessible
 contrast), Caja de Cristal (editable assumption panel), the Kill Test (frozen
-no-agent artifact), and `DEMO_MODE` graceful degradation are implemented and
-covered by tests.
+no-agent artifact), and a structured, retryable provider-failure error contract
+are implemented and covered by tests.
 
 | Layer | Status |
 |---|---|
@@ -344,9 +343,9 @@ covered by tests.
 | Voz y Color — accessible catalog, speech, TTS/STT (M7) | ✅ Implemented, tested |
 | Caja de Cristal — editable assumptions (M8) | ✅ Implemented, tested |
 | Kill Test — frozen artifact, no agent (M8) | ✅ Implemented, tested |
-| DEMO_MODE graceful degradation + golden-path test (M8) | ✅ Implemented, tested |
+| Provider-failure error contract (`error_code`/`retryable`) + golden-path test (M8) | ✅ Implemented, tested |
 
-**Test suite:** 139 tests, all passing.
+**Test suite:** 142 tests, all passing.
 
 ### Roadmap
 - Backend milestones complete. Remaining demo work is operational: golden-path

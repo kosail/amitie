@@ -46,20 +46,20 @@ VALID_PAYLOAD = [
                     "id": "debt-bbva",
                     "component": "DebtNode",
                     "creditor": "BBVA",
-                    "balance": {"path": "/finance/liabilities/0/balance"},
-                    "apr": {"path": "/finance/liabilities/0/apr"},
-                    "minPayment": {"path": "/finance/liabilities/0/minPayment"},
+                    "balance": {"path": "/liabilities/0/balance"},
+                    "apr": {"path": "/liabilities/0/apr"},
+                    "minPayment": {"path": "/liabilities/0/minPayment"},
                 },
                 {
                     "id": "strategy",
                     "component": "TradeoffScale",
                     "leftLabel": "Bajar mi pago mensual",
                     "rightLabel": "Pagar menos intereses",
-                    "value": {"path": "/ui/strategyTilt"},
+                    "value": 50,
                     "action": {
                         "event": {
                             "name": "tune_tradeoff",
-                            "context": {"value": "/ui/strategyTilt"},
+                            "context": {"value": 50},
                         }
                     },
                 },
@@ -70,7 +70,7 @@ VALID_PAYLOAD = [
         "version": "v0.9",
         "updateDataModel": {
             "surfaceId": "debt-ana",
-            "path": "/finance",
+            "path": "/",
             "value": {"liabilities": [{"balance": 48000, "apr": 0.54, "minPayment": 2900}]},
         },
     },

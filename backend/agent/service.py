@@ -67,12 +67,10 @@ class AgentService:
         toolbox: Toolbox,
         tracer: Tracer | None = None,
         max_model_calls: int = 6,
-        demo_mode: bool = False,
     ) -> None:
         self._toolbox = toolbox
         self._tracer = tracer
         self._max_calls = max_model_calls
-        self._demo_mode = demo_mode
         self._model = GatewayLlm(model="gateway", provider=provider, max_calls=max_model_calls)
         self._speech = SpeechEnricher(toolbox)
         self._runner: InMemoryRunner | None = None
@@ -137,6 +135,8 @@ class AgentService:
         self._captured.clear()
         assistant_texts: list[str] = []
         error: str | None = None
+        error_code = "agent_error"
+        retryable = False
         try:
             async for event in runner.run_async(
                 user_id=user_id,
@@ -151,8 +151,12 @@ class AgentService:
                         assistant_texts.append(part.text)
         except ModelCallLimitError as exc:
             error = str(exc)
+            error_code = "model_call_limit"
+            retryable = True
         except ProviderError as exc:
             error = str(exc)
+            error_code = "provider_unavailable"
+            retryable = True
         except Exception as exc:  # keep the API resilient to ADK/tool failures
             error = f"{type(exc).__name__}: {exc}"
 
@@ -160,22 +164,28 @@ class AgentService:
         await self._trace(started, error=error)
 
         if error is not None:
-            if self._demo_mode:
-                cached = await self._cached_response(session_id)
-                if cached is not None:
-                    return cached
-            return {"status": "error", "message": error, "assistant_text": assistant_text}
+            return {
+                "status": "error",
+                "error_code": error_code,
+                "retryable": retryable,
+                "message": error,
+                "assistant_text": assistant_text,
+            }
 
         captured = self._captured.get("persist_ui")
         if captured is None:
             return {
                 "status": "error",
+                "error_code": "agent_error",
+                "retryable": True,
                 "issues": ["the agent did not call persist_ui"],
                 "assistant_text": assistant_text,
             }
         if captured.get("status") != "ok":
             return {
                 "status": "error",
+                "error_code": "agent_error",
+                "retryable": True,
                 "issues": captured.get("issues", []),
                 "assistant_text": assistant_text,
             }
@@ -187,29 +197,6 @@ class AgentService:
             "catalog_id": captured.get("catalog_id"),
             "audio_ref": captured.get("audio_ref"),
             "assistant_text": assistant_text,
-        }
-
-    async def _cached_response(self, session_id: str) -> dict[str, Any] | None:
-        """DEMO_MODE: on provider failure, re-serve the session's last surface (INV-004/NFR-04)."""
-        try:
-            session = await self._toolbox.call("get_session", {"session_id": session_id})
-            if session.get("status") != "ok":
-                return None
-            surface_id = session.get("active_surface_id")
-            if not surface_id:
-                return None
-            hydrated = await self._toolbox.call("hydrate_ui", {"surface_id": surface_id})
-        except Exception:
-            return None
-        if hydrated.get("status") != "ok":
-            return None
-        return {
-            "status": "ok",
-            "surface_id": surface_id,
-            "a2ui": hydrated.get("a2ui", []),
-            "catalog_id": hydrated.get("catalog_id"),
-            "audio_ref": hydrated.get("audio_ref"),
-            "assistant_text": "Modo demo: reutilizando la última interfaz generada.",
         }
 
     async def _trace(self, started: float, *, error: str | None) -> None:

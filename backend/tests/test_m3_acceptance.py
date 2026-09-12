@@ -38,8 +38,8 @@ COMPONENTS = [
         "component": "TradeoffScale",
         "leftLabel": "Bajar mi pago mensual",
         "rightLabel": "Pagar menos intereses",
-        "value": {"path": "/ui/strategyTilt"},
-        "action": {"event": {"name": "tune_tradeoff", "context": {"value": "/ui/strategyTilt"}}},
+        "value": 50,
+        "action": {"event": {"name": "tune_tradeoff", "context": {"value": 50}}},
     },
 ]
 

@@ -69,7 +69,6 @@ def create_app(
             toolbox=toolbox,
             tracer=tracer,
             max_model_calls=resolved.agent_max_model_calls,
-            demo_mode=resolved.demo_mode,
         )
         negotiation_service = NegotiationService(
             provider=llm,

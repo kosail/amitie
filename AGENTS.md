@@ -161,7 +161,7 @@ Rules:
 
 ## 8. Secrets & security
 
-- All credentials (`GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, `ELEVENLABS_API_KEY`, etc.) live only in `backend/.env`. Runtime configuration (`DATABASE_PATH`, `DEMO_MODE`, `LOG_LEVEL`) also lives in `.env`.
+- All credentials (`GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, `ELEVENLABS_API_KEY`, etc.) live only in `backend/.env`. Runtime configuration (`DATABASE_PATH`, `LOG_LEVEL`) also lives in `.env`.
 - `.env` is git-ignored. `backend/.env.example` contains names and placeholders only.
 - Never commit, log, echo, or document a secret. Never paste secrets into generated code.
 - Any key disclosed outside `.env` is considered compromised and must be rotated after the event.
@@ -176,7 +176,7 @@ Rules:
 - A provider smoke test that asserts the failover chain activates on quota/rate-limit.
 - A schema test asserting all required tables exist, and a seed test asserting the seed is deterministic and covers the showcase entities.
 - Verify A2UI payloads with the A2UI agent SDK before they leave the backend.
-- Run the golden path in `DEMO_MODE` before any rehearsal.
+- Run the golden path before any rehearsal.
 - When a task is complete, run the relevant tests and lint/type checks; if a check command is not yet defined, propose one and record it here.
 
 ---

@@ -10,17 +10,17 @@
 
 ## 1. Interaction loop (foundation)
 
-- [ ] **REQ-LOOP-01** — A user can express an intention or situation; the agent interprets it and retrieves relevant information through MCP before responding.
-- [ ] **REQ-LOOP-02** — The agent emits the interface as A2UI messages; the frontend renders it using the team's custom catalog.
-- [ ] **REQ-LOOP-03** — A user interaction with a generated component returns to the agent as context and can change the next decision and the next interface.
-- [ ] **REQ-LOOP-04** — The experience never terminates after a single generated interface; at least two structural mutations occur in a session.
-- [ ] **REQ-LOOP-05** — Every HTTP mutation endpoint returns a full A2UI message array.
-- [ ] **REQ-LOOP-06** — Every generated interface uses only components, props, and actions defined in `A2UI_CATALOG.md` for the declared catalog.
+- [x] **REQ-LOOP-01** — A user can express an intention or situation; the agent interprets it and retrieves relevant information through MCP before responding.
+- [~] **REQ-LOOP-02** — The agent emits the interface as A2UI messages; the frontend renders it using the team's custom catalog. (Backend emits + validates; renderer is the frontend team's.)
+- [x] **REQ-LOOP-03** — A user interaction with a generated component returns to the agent as context and can change the next decision and the next interface.
+- [x] **REQ-LOOP-04** — The experience never terminates after a single generated interface; at least two structural mutations occur in a session.
+- [x] **REQ-LOOP-05** — Every HTTP mutation endpoint returns a full A2UI message array.
+- [x] **REQ-LOOP-06** — Every generated interface uses only components, props, and actions defined in `A2UI_CATALOG.md` for the declared catalog.
 
 ## 2. La Mesa + El Revés (CORE)
 
-- [ ] **REQ-LM-01** — On a debt-related intent, the agent retrieves liabilities, income streams, cash flow, and subscriptions through the `finance` MCP.
-- [ ] **REQ-LM-02** — The agent selects a restructuring strategy (reasoned by the LLM) and emits a generated strategic choice interface (tradeoff control) rather than assuming the objective.
+- [x] **REQ-LM-01** — On a debt-related intent, the agent retrieves liabilities, income streams, cash flow, and subscriptions through the `finance` MCP.
+- [x] **REQ-LM-02** — The agent selects a restructuring strategy (reasoned by the LLM) and emits a generated strategic choice interface (tradeoff control) rather than assuming the objective.
 - [x] **REQ-LM-03** — The plan is computed by the deterministic engine via `simulate_plan`; the LLM never computes amortization values.
 - [x] **REQ-LM-04** — The system detects when a plan fails within the horizon (`detect_plan_breaks`) and exposes the failure month.
 - [x] **REQ-LM-05** — When a plan fails, the agent emits a new, unprompted `BreakAlert` surface the user did not request. **(Mutation #1)**
@@ -61,36 +61,36 @@
 
 ## 7. UI persistence & hydration
 
-- [ ] **REQ-UI-01** — Generated UIs are stored per user, associated to `loans_credits` or `saving_bag` and their entity, using placeholders.
-- [ ] **REQ-UI-02** — The backend hydrates placeholders with current data immediately before delivery; stale values are never delivered.
+- [x] **REQ-UI-01** — Generated UIs are stored per user, associated to `loans_credits` or `saving_bag` and their entity, using placeholders.
+- [x] **REQ-UI-02** — The backend hydrates placeholders with current data immediately before delivery; stale values are never delivered.
 - [x] **REQ-UI-03** — A revalidation pass may mutate the stored structure; data-only changes are insufficient.
 - [x] **REQ-UI-04** — Each stored UI carries a version that increments on structural change.
 
 ## 8. API contract (frozen)
 
-- [ ] **REQ-API-01** `POST /api/session`
-- [ ] **REQ-API-02** `POST /api/message` — `{session_id, text|audio_b64}` → `{a2ui[], surface_id, audio_ref?}`
-- [ ] **REQ-API-03** `POST /api/action` — `{surface_id, name, source_component_id, context}` → `{a2ui[]}`
-- [ ] **REQ-API-04** `GET /api/ui/{surface_id}` — hydration + revalidation → `{a2ui[]}`
+- [x] **REQ-API-01** `POST /api/session`
+- [x] **REQ-API-02** `POST /api/message` — `{session_id, text|audio_b64}` → `{a2ui[], surface_id, audio_ref?}`
+- [x] **REQ-API-03** `POST /api/action` — `{surface_id, name, source_component_id, context}` → `{a2ui[]}`
+- [x] **REQ-API-04** `GET /api/ui/{surface_id}` — hydration + revalidation → `{a2ui[]}`
 - [x] **REQ-API-05** Saving bags: `POST /api/saving-bags`, `GET /api/saving-bags[/{id}]`, `POST /api/saving-bags/{id}/answer`, `POST /api/saving-bags/{id}/refresh`
 - [x] **REQ-API-06** `POST /api/negotiation/{session}/turn`, `POST /api/negotiation/{session}/take-control`
 - [x] **REQ-API-07** `GET /api/audio/{asset_id}`
-- [ ] **REQ-API-08** `GET /debug/kill-test/{surface_id}`, `GET /debug/trace/{trace_id}`
+- [x] **REQ-API-08** `GET /debug/kill-test/{surface_id}`, `GET /debug/trace/{trace_id}`
 
 ## 9. Data
 
-- [ ] **REQ-DATA-01** — The local SQLite schema covers: users, accounts, transactions, income_streams, subscriptions, liabilities, lender_policies, saving_bags, saving_bag_answers, saving_bag_research, saving_bag_plan, generated_ui, ui_actions, negotiation_rounds, accessibility_profiles, audio_assets, sessions, traces.
-- [ ] **REQ-DATA-02** — A deterministic, re-runnable seed provides: one debt persona, one accessible persona, one travel saving bag, and at least six months of transaction/subscription history.
-- [ ] **REQ-DATA-03** — Persistence is a single local SQLite database; there is no remote or managed database. All data and processing remain on the backend host.
-- [ ] **REQ-DATA-04** — All persistence is reached through a narrow persistence port; the agent and MCP layers never touch the SQLite driver directly.
+- [x] **REQ-DATA-01** — The local SQLite schema covers: users, accounts, transactions, income_streams, subscriptions, liabilities, lender_policies, saving_bags, saving_bag_answers, saving_bag_research, saving_bag_plan, generated_ui, ui_actions, negotiation_rounds, accessibility_profiles, audio_assets, sessions, traces.
+- [x] **REQ-DATA-02** — A deterministic, re-runnable seed provides: one debt persona, one accessible persona, one travel saving bag, and at least six months of transaction/subscription history.
+- [x] **REQ-DATA-03** — Persistence is a single local SQLite database; there is no remote or managed database. All data and processing remain on the backend host.
+- [x] **REQ-DATA-04** — All persistence is reached through a narrow persistence port; the agent and MCP layers never touch the SQLite driver directly.
 - [ ] **REQ-DATA-05** — The local backend is exposed to the internet exclusively through a Cloudflare Tunnel; no Cloudflare database or Workers runtime is used.
 
 ## 10. Non-functional
 
 - [x] **REQ-NFR-01** — Provider failover works without code changes and keeps development/demo alive on quota exhaustion (Gemini→DeepSeek, ElevenLabs→edge-tts, Gemini STT→faster-whisper, grounding→fallback table).
-- [ ] **REQ-NFR-02** — Every request and every LLM/MCP call is traceable by `trace_id`.
-- [ ] **REQ-NFR-03** — Modules can be built, run, and tested independently (isolated MCP servers; pure engine and hydration modules).
-- [x] **REQ-NFR-04** — `DEMO_MODE` pins the system to seeded data and cached responses if any provider degrades.
+- [x] **REQ-NFR-02** — Every request and every LLM/MCP call is traceable by `trace_id`.
+- [x] **REQ-NFR-03** — Modules can be built, run, and tested independently (isolated MCP servers; pure engine and hydration modules).
+- [x] **REQ-NFR-04** — The demo runs on locally seeded data; when all LLM providers are unavailable the API returns a clear, retryable error (`error_code`, `retryable`) instead of a stale surface, so the system's real-time generation is always observable.
 - [x] **REQ-NFR-05** — The golden path completes in approximately 90 seconds.
 - [ ] **REQ-NFR-06** — The backend is reachable over the internet through a Cloudflare Tunnel while all execution and data remain local.
 

@@ -60,6 +60,8 @@ def _response(result: dict, **extra) -> SavingBagResponse:
         message=result.get("message"),
         catalog_id=result.get("catalog_id"),
         audio_ref=result.get("audio_ref"),
+        error_code=result.get("error_code"),
+        retryable=bool(result.get("retryable", False)),
         **extra,
     )
 

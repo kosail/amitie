@@ -6,8 +6,8 @@ timing. Usage (with the API already running on 127.0.0.1:8000):
     python -m demo.golden_path --base-url http://127.0.0.1:8000 --user u_ana
 
 This is a rehearsal aid: the LLM decides the actual interfaces, so the runner
-narrates and times the journey rather than asserting exact payloads. Run it in
-`DEMO_MODE=1` before a live rehearsal (AGENTS.md §9).
+narrates and times the journey rather than asserting exact payloads. Run it
+before a live rehearsal (AGENTS.md §9).
 """
 
 from __future__ import annotations

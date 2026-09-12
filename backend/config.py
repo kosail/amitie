@@ -51,7 +51,6 @@ def _as_int(name: str, default: str) -> int:
 @dataclass(frozen=True)
 class Settings:
     database_path: str = "./data/amitie.sqlite3"
-    demo_mode: bool = True
     log_level: str = "INFO"
 
     llm_provider: str = "gemini"
@@ -86,7 +85,6 @@ class Settings:
     def from_env(cls) -> "Settings":
         return cls(
             database_path=os.environ.get("DATABASE_PATH", "./data/amitie.sqlite3"),
-            demo_mode=_as_bool("DEMO_MODE", "1"),
             log_level=os.environ.get("LOG_LEVEL", "INFO").strip().upper(),
             llm_provider=os.environ.get("LLM_PROVIDER", "gemini").strip().lower(),
             llm_fallback=os.environ.get("LLM_FALLBACK", "deepseek").strip().lower(),

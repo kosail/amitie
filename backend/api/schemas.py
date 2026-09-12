@@ -41,6 +41,8 @@ class AgentResponse(BaseModel):
     round: int | None = None
     catalog_id: str | None = None
     audio_ref: str | None = None
+    error_code: str | None = None
+    retryable: bool = False
 
 
 class NegotiationRequest(BaseModel):
@@ -94,3 +96,5 @@ class SavingBagResponse(BaseModel):
     message: str | None = None
     catalog_id: str | None = None
     audio_ref: str | None = None
+    error_code: str | None = None
+    retryable: bool = False

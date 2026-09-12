@@ -31,8 +31,8 @@ Components use the A2UI v0.9 **flat adjacency-list** model: a flat list where ea
 
 ## 3. Data binding
 
-- Any prop value may be a literal or a JSON-Pointer binding: `{ "path": "/finance/liabilities/0/balance" }`.
-- Bindings resolve against the surface data model updated by `updateDataModel`.
+- Any prop value may be a literal or a JSON-Pointer binding: `{ "path": "/liabilities/0/balance" }`.
+- Bindings resolve against the surface data model updated by `updateDataModel`. The data model root holds the domain keys directly — `profile`, `liabilities`, `totals`, `incomeStreams`, `subscriptions`, `subscriptionTotal`, `cashFlow`, `plan`, `savings`, `speech` — with no `/finance` wrapper.
 - The backend never embeds a literal financial value in a persisted template; it uses bindings or `{{...}}` placeholders (see §7).
 
 ## 4. Actions
@@ -127,19 +127,19 @@ Everything else in §6 is reserved for later milestones and must not be emitted 
     { "id": "title", "component": "Heading", "text": "Tu situación actual", "level": 1 },
     { "id": "debts", "component": "Column", "children": ["debt-bbva", "debt-nomina"], "gap": 8 },
     { "id": "debt-bbva", "component": "DebtNode", "creditor": "BBVA", "kind": "credit_card",
-      "balance": { "path": "/finance/liabilities/0/balance" },
-      "apr": { "path": "/finance/liabilities/0/apr" },
-      "minPayment": { "path": "/finance/liabilities/0/minPayment" } },
+      "balance": { "path": "/liabilities/0/balance" },
+      "apr": { "path": "/liabilities/0/apr" },
+      "minPayment": { "path": "/liabilities/0/minPayment" } },
     { "id": "debt-nomina", "component": "DebtNode", "creditor": "BBVA", "kind": "payroll_loan",
-      "balance": { "path": "/finance/liabilities/1/balance" },
-      "apr": { "path": "/finance/liabilities/1/apr" },
-      "minPayment": { "path": "/finance/liabilities/1/minPayment" } },
+      "balance": { "path": "/liabilities/1/balance" },
+      "apr": { "path": "/liabilities/1/apr" },
+      "minPayment": { "path": "/liabilities/1/minPayment" } },
     { "id": "strategy", "component": "TradeoffScale",
       "leftLabel": "Bajar mi pago mensual", "rightLabel": "Pagar menos intereses",
-      "value": { "path": "/ui/strategyTilt" },
-      "action": { "event": { "name": "tune_tradeoff", "context": { "value": "/ui/strategyTilt" } } } }
+      "value": 50,
+      "action": { "event": { "name": "tune_tradeoff", "context": { "value": 50 } } } }
   ] } },
-  { "version": "v0.9", "updateDataModel": { "surfaceId": "debt-ana", "path": "/ui", "value": { "strategyTilt": 50 } } }
+  { "version": "v0.9", "updateDataModel": { "surfaceId": "debt-ana", "path": "/", "value": { "liabilities": [ { "balance": 48000, "apr": 0.54, "minPayment": 2900 } ] } } }
 ]
 ```
 
