@@ -33,8 +33,20 @@ CREATE TABLE IF NOT EXISTS transactions (
     direction TEXT NOT NULL,
     category TEXT,
     merchant TEXT,
-    is_subscription INTEGER NOT NULL DEFAULT 0
+    is_subscription INTEGER NOT NULL DEFAULT 0,
+    memo TEXT
 );
+
+CREATE TABLE IF NOT EXISTS saved_recipients (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    alias TEXT NOT NULL,
+    clabe TEXT NOT NULL,
+    bank_name TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_saved_recipients_user_id ON saved_recipients(user_id);
 
 CREATE TABLE IF NOT EXISTS income_streams (
     id TEXT PRIMARY KEY,

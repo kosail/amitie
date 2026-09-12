@@ -48,3 +48,8 @@ async def _ensure_columns(database: DatabasePort) -> None:
     ):
         if name not in liability_columns:
             await database.execute(f"ALTER TABLE liabilities ADD COLUMN {name} {ddl}")
+    transaction_columns = {
+        row["name"] for row in await database.fetch_all("PRAGMA table_info(transactions)")
+    }
+    if "memo" not in transaction_columns:
+        await database.execute("ALTER TABLE transactions ADD COLUMN memo TEXT")

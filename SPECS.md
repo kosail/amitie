@@ -123,11 +123,51 @@ Added 2026-09-12, alongside the §9 finance contract note, for the native login 
 - [x] **REQ-AUTH-03** — An unknown username or an incorrect password both return `401` with the same generic message (no username enumeration).
 - [x] **REQ-AUTH-04** — The two seeded personas (`u_ana`/`u_don`) each get a real, fixed demo login (`demo`/`demo1234` and `accesible`/`demo1234`) via deterministic, fixed-salt seed hashes (`db/seed.py`) so `python -m db.init` stays reproducible (REQ-DATA-02).
 
-## 13. Explicitly out of scope
+## 13. Real transfers (native screen extension)
+
+Added 2026-09-12, alongside the §9 finance contract note and §12, for the native
+Transferencias screen (`hackmtyfront/openspec/changes/redesign-transfers-real-data`).
+Not part of the original §8 A2UI contract; follows the exact `finance` MCP +
+plain-REST pattern already established by `POST /api/liabilities/{id}/payment`.
+
+- [x] **REQ-XFER-01** — `GET /api/recipients?user_id=` returns the user's saved
+  transfer recipients: `{ recipients: [{ id, alias, clabe, bankName, createdAt }] }`,
+  persisted in the new `saved_recipients` table (`backend/db/schema.sql`).
+- [x] **REQ-XFER-02** — `POST /api/recipients` (`{ user_id, alias, clabe, bank_name }`)
+  creates and persists a new recipient. The CLABE checksum (mod-10, weights
+  3-7-1 repeating) is re-validated server-side (`mcp_servers/finance/clabe.py`)
+  — the client's own validation is never trusted alone for a money-adjacent
+  field. An invalid CLABE or empty alias/bank returns `{status: "error", issues: [...]}`.
+- [x] **REQ-XFER-03** — `POST /api/transfers` (`{ user_id, source_account_id, amount,
+  memo, destination }`, `destination` discriminated on `kind`: `{"kind": "own",
+  "account_id"}` or `{"kind": "external", "clabe", "bank_name", "alias",
+  "save_recipient"}`) moves real, persisted money out of `source_account_id` in
+  one deterministic `database.batch()` write (`mcp_servers/finance/service.py::transfer_funds`,
+  INV-015 — the LLM never computes this math):
+  - `kind: "own"` validates the destination account belongs to the same user
+    and differs from the source, then debits the source and credits the
+    destination, recording two `transactions` rows (`category='transfer_own'`,
+    one `direction='out'`, one `direction='in'`, sharing the same `memo`).
+  - `kind: "external"` re-validates the CLABE checksum server-side, debits the
+    source account only (no destination account exists in this system for an
+    outside bank), records one `transactions` row (`category='transfer_external'`),
+    and — when `save_recipient` is set — also inserts into `saved_recipients`.
+  - Insufficient funds, an invalid CLABE, an unknown/foreign destination
+    account, or the same account on both sides are all rejected with
+    `{status: "error", issues: [...]}` (HTTP 400) and change nothing.
+  - Response: `{ status, transfer, source_account, destination_account?,
+    saved_recipient?, issues: [] }`, mirroring `PaymentResponse`'s status/issues
+    convention so the frontend's existing `ApiError`/`issues` handling
+    (`AbonoModal`) applies unchanged.
+- [x] **REQ-XFER-04** — `transactions.memo` (new nullable column, idempotent
+  migration in `db/schema.py::_ensure_columns`) stores the required transfer
+  concept/memo for both transfer categories.
+
+## 14. Explicitly out of scope
 
 - Production databases or real banking integrations.
 - Remote or managed databases; all persistence is a local SQLite file.
-- Payment rails or real money movement with an outside bank (internal, persisted ledger movement between seeded accounts is in scope — see §9's contract note and §12).
+- Payment rails or real money movement with an outside bank (internal, persisted ledger movement between seeded accounts is in scope — see §9's contract note, §12, and §13).
 - Deployment infrastructure, microservices orchestration, or elaborate analytics.
 - Third-party UI component libraries.
 

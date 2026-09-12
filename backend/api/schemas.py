@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -117,6 +117,56 @@ class PaymentResponse(BaseModel):
     liability: dict[str, Any] | None = None
     account: dict[str, Any] | None = None
     transaction: dict[str, Any] | None = None
+    issues: list[str] = Field(default_factory=list)
+
+
+class RecipientCreateRequest(BaseModel):
+    user_id: str = "u_ana"
+    alias: str = Field(..., min_length=1)
+    clabe: str
+    bank_name: str = Field(..., min_length=1)
+
+
+class RecipientResponse(BaseModel):
+    status: str = "ok"
+    recipient: dict[str, Any] | None = None
+    issues: list[str] = Field(default_factory=list)
+
+
+class RecipientsResponse(BaseModel):
+    recipients: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class TransferDestinationOwn(BaseModel):
+    kind: Literal["own"] = "own"
+    account_id: str
+
+
+class TransferDestinationExternal(BaseModel):
+    kind: Literal["external"] = "external"
+    clabe: str
+    bank_name: str
+    alias: str = ""
+    save_recipient: bool = False
+
+
+TransferDestination = TransferDestinationOwn | TransferDestinationExternal
+
+
+class TransferRequest(BaseModel):
+    user_id: str = "u_ana"
+    source_account_id: str
+    amount: float
+    memo: str = Field(..., min_length=1)
+    destination: TransferDestination = Field(..., discriminator="kind")
+
+
+class TransferResponse(BaseModel):
+    status: str
+    transfer: dict[str, Any] | None = None
+    source_account: dict[str, Any] | None = None
+    destination_account: dict[str, Any] | None = None
+    saved_recipient: dict[str, Any] | None = None
     issues: list[str] = Field(default_factory=list)
 
 
