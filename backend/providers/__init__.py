@@ -15,7 +15,7 @@ from .base import (
     ToolSpec,
     Usage,
 )
-from .gateway import FallbackLLM
+from .gateway import FallbackLLM, NullLLM
 from .registry import build_llm, build_llm_gateway, build_research, build_stt, build_tts
 from .research import (
     FallbackResearch,
@@ -52,6 +52,7 @@ __all__ = [
     "GeminiSTT",
     "LLMProvider",
     "LLMResult",
+    "NullLLM",
     "NullSTT",
     "NullTTS",
     "ProviderError",

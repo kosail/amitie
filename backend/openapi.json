@@ -1,0 +1,1713 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "La Mesa API",
+    "description": "REST JSON contract for **La Mesa**. Every mutating response carries a full A2UI\nmessage array. No WebSockets or SSE (INV-010).\n\nFrozen routes live in `SPECS.md` §8 (`REQ-API-01` … `REQ-API-08`). The frontend\nconsumes this HTTP API only; LLM providers are not called from the client.\n\nInteractive docs: `/swagger` or `/docs` (Swagger UI) and `/redoc`. Machine-readable spec:\n`/openapi.json`.",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/session": {
+      "post": {
+        "tags": [
+          "session"
+        ],
+        "summary": "Create conversation session (REQ-API-01)",
+        "description": "Create a new conversational session in the local SQLite database.\n\n- **user_id**: The identifier of the user (e.g., seeded demo user `u_ana`).\n- **Returns**: A unique `session_id` required for subsequent `/api/message` and negotiation turns.",
+        "operationId": "create_session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Session created successfully in the local database.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/message": {
+      "post": {
+        "tags": [
+          "message"
+        ],
+        "summary": "Send user utterance to agent (REQ-API-02)",
+        "description": "Send user text or base64 audio to the AI agent orchestrator (REQ-API-02).\n\n- If `audio_b64` is provided without `text`, audio is transcribed first via the `voice` MCP server.\n- The agent processes the utterance, queries financial tools via MCP, and generates a new A2UI interface.\n- If accessibility is enabled for this persona, `amitie.voz_color.v1` is generated with pre-warmed TTS audio (REQ-ACC-01).\n- Every response returns the complete A2UI message array over HTTP (INV-010).",
+        "operationId": "post_message",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Agent turn executed successfully; returns complete A2UI message array.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found in the database.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/action": {
+      "post": {
+        "tags": [
+          "action"
+        ],
+        "summary": "Submit closed-loop A2UI action (REQ-API-03)",
+        "description": "Submit a user interaction emitted by an A2UI component (REQ-API-03, INV-017).\n\n- Closes the loop: interactions such as moving a liquidity/term slider (`tune_tradeoff`),\n  toggling assumptions (`toggle_assumption`), or accepting a debt consolidation offer (`accept_offer`)\n  are fed back into the agent context.\n- If accepting an offer, launches or transitions to the El Revés negotiation loop.\n- If tuning tradeoffs or assumptions, recalculates the deterministic financial math via MCP\n  and triggers structural revalidation or BreakAlert mutation.",
+        "operationId": "post_action",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Action processed successfully; returns updated A2UI message array.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Surface not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/negotiation/{session_id}/turn": {
+      "post": {
+        "tags": [
+          "negotiation"
+        ],
+        "summary": "Advance El Revés negotiation turn (REQ-API-06)",
+        "description": "Execute one round of the El Revés bank negotiation (REQ-API-06, INV-001).\n\n- The agent negotiates against a simulated bank persona using bank lender policies.\n- Evaluates interest rates, terms, and liquidity tradeoff constraints.\n- Emits updated negotiation UI with bank counteroffer or final agreement.",
+        "operationId": "negotiation_turn",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NegotiationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Round evaluated; returns updated offer state and negotiation A2UI.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/negotiation/{session_id}/take-control": {
+      "post": {
+        "tags": [
+          "negotiation"
+        ],
+        "summary": "User takes manual control of El Revés negotiation (REQ-API-06)",
+        "description": "Allow the user to intervene directly and propose custom terms to the bank persona.",
+        "operationId": "negotiation_take_control",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NegotiationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Manual position evaluated by the bank persona.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/saving-bags": {
+      "post": {
+        "tags": [
+          "saving-bags"
+        ],
+        "summary": "Create a saving bag (REQ-API-05)",
+        "description": "Create a new saving bag goal (REQ-API-05).\n\n- Persists the saving bag entity in SQLite via the `savings` MCP server.\n- Agent analyzes the goal name (e.g. 'Viaje a Japón') and infers clarifying questions.\n- Emits an interactive questionnaire surface rendered via A2UI.",
+        "operationId": "create_saving_bag",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavingBagCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saving bag initialized; returns clarification questions in A2UI form.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavingBagResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "saving-bags"
+        ],
+        "summary": "List saving bags (REQ-API-05)",
+        "description": "List all saving bags created by a given user.",
+        "operationId": "list_saving_bags",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "User identifier whose saving bags to list.",
+              "default": "u_ana",
+              "title": "User Id"
+            },
+            "description": "User identifier whose saving bags to list."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of saving bag records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavingBagResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/saving-bags/{bag_id}": {
+      "get": {
+        "tags": [
+          "saving-bags"
+        ],
+        "summary": "Get saving bag details (REQ-API-05)",
+        "description": "Retrieve details, current plan, and hydrated UI for a saving bag.",
+        "operationId": "get_saving_bag",
+        "parameters": [
+          {
+            "name": "bag_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Bag Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saving bag details and active hydrated surface.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavingBagResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Saving bag not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/saving-bags/{bag_id}/answer": {
+      "post": {
+        "tags": [
+          "saving-bags"
+        ],
+        "summary": "Submit answers to saving bag questions (REQ-API-05)",
+        "description": "Submit user answers to the saving bag questionnaire (REQ-API-05).\n\n- Persists answers via the `savings` MCP server.\n- Researches real itemized costs (using Gemini grounding or static price table fallback).\n- Computes mathematical feasibility against user's actual cash flow (INV-015).\n- Emits a dated, funded plan in A2UI with milestone breakdown.",
+        "operationId": "answer_saving_bag",
+        "parameters": [
+          {
+            "name": "bag_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Bag Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavingBagAnswerRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Answers processed; research and deterministic feasibility plan generated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavingBagResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Saving bag not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/saving-bags/{bag_id}/refresh": {
+      "post": {
+        "tags": [
+          "saving-bags"
+        ],
+        "summary": "Refresh saving bag research (REQ-API-05)",
+        "description": "Refresh price research and recalculate feasibility plan for a saving bag (REQ-API-05).",
+        "operationId": "refresh_saving_bag",
+        "parameters": [
+          {
+            "name": "bag_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Bag Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavingBagRefreshRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Research refreshed and plan recomputed successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavingBagResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Saving bag not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ui/{surface_id}": {
+      "get": {
+        "tags": [
+          "ui"
+        ],
+        "summary": "Hydrate a persisted surface (REQ-API-04)",
+        "description": "Hydrate a persisted UI surface with fresh financial data before delivery (REQ-API-04, INV-022).\n\n- Resolves stored placeholders against live SQLite data.\n- Runs revalidation pass to detect any structural mutations needed.\n- Stale or cached numbers are never delivered to the client.",
+        "operationId": "get_ui",
+        "parameters": [
+          {
+            "name": "surface_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Surface Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Surface hydrated successfully with fresh data.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Surface not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/audio/{asset_id}": {
+      "get": {
+        "tags": [
+          "audio"
+        ],
+        "summary": "Fetch cached TTS audio asset (REQ-API-07)",
+        "description": "Fetch pre-warmed or dynamically synthesized TTS audio bytes (REQ-API-07, REQ-ACC-03).",
+        "operationId": "get_audio",
+        "parameters": [
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Asset Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Binary audio stream returned with public caching headers.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "audio/mpeg": {}
+            }
+          },
+          "404": {
+            "description": "Audio asset not found or missing from cache.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/debug/trace/{trace_id}": {
+      "get": {
+        "tags": [
+          "debug"
+        ],
+        "summary": "Fetch structured traces (REQ-API-08, REQ-NFR-02)",
+        "description": "Retrieve full structured trace records for a given request trace_id (INV-018).",
+        "operationId": "get_trace",
+        "parameters": [
+          {
+            "name": "trace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Trace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trace events retrieved from SQLite observability table.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/debug/kill-test/{surface_id}": {
+      "get": {
+        "tags": [
+          "debug"
+        ],
+        "summary": "Serve frozen Kill Test UI (REQ-API-08, REQ-KT-01)",
+        "description": "Serve a persisted surface from its genuine frozen artifact, with no agent\nand no live recomputation (REQ-KT-01, REQ-KT-02, INV-032). Proves the interface\ncollapses without the real-time agent.",
+        "operationId": "get_kill_test",
+        "parameters": [
+          {
+            "name": "surface_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Surface Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Frozen UI artifact served successfully without LLM involvement.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Frozen artifact not found for this surface.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "tags": [
+          "ops"
+        ],
+        "summary": "Service liveness probe",
+        "description": "Liveness health check endpoint. Returns `status: ok` when process is running.",
+        "operationId": "healthz_healthz_get",
+        "responses": {
+          "200": {
+            "description": "Process is alive and responsive",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Healthz Healthz Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ActionRequest": {
+        "properties": {
+          "surface_id": {
+            "type": "string",
+            "title": "Surface Id",
+            "description": "ID of the generated UI surface where the action originated.",
+            "examples": [
+              "surf_abc123"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "A2UI action name, e.g. tune_tradeoff, toggle_assumption, accept_offer (INV-017).",
+            "examples": [
+              "tune_tradeoff"
+            ]
+          },
+          "source_component_id": {
+            "type": "string",
+            "title": "Source Component Id",
+            "description": "ID of the A2UI component that dispatched the action.",
+            "default": "",
+            "examples": [
+              "tradeoff_slider"
+            ]
+          },
+          "context": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Context",
+            "description": "Arbitrary action context parameters provided by the component.",
+            "examples": [
+              {
+                "liquidity_weight": 0.8
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "surface_id",
+          "name"
+        ],
+        "title": "ActionRequest",
+        "description": "Closed-loop action payload emitted from an A2UI component.",
+        "examples": [
+          {
+            "context": {
+              "liquidity_weight": 0.8
+            },
+            "name": "tune_tradeoff",
+            "source_component_id": "tradeoff_slider",
+            "surface_id": "surf_abc123"
+          }
+        ]
+      },
+      "AgentResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Execution status ('ok' or 'error').",
+            "examples": [
+              "ok"
+            ]
+          },
+          "surface_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Surface Id",
+            "description": "Identifier of the active or newly persisted A2UI surface.",
+            "examples": [
+              "surf_1a2b3c4d"
+            ]
+          },
+          "a2ui": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "A2Ui",
+            "description": "Full A2UI message array for this turn (INV-010, INV-016)."
+          },
+          "assistant_text": {
+            "type": "string",
+            "title": "Assistant Text",
+            "description": "Text utterance or commentary from the AI agent.",
+            "default": "",
+            "examples": [
+              "He analizado tus deudas y reestructurado el plan."
+            ]
+          },
+          "issues": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Issues",
+            "description": "List of warnings, schema validation issues, or soft errors."
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message",
+            "description": "Optional human-readable error or status message."
+          },
+          "actor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor",
+            "description": "Current acting party in negotiation ('user' or 'bank').",
+            "examples": [
+              "bank"
+            ]
+          },
+          "round": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Round",
+            "description": "Current negotiation round index.",
+            "examples": [
+              1
+            ]
+          },
+          "catalog_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalog Id",
+            "description": "Catalog ID used to render the interface ('amitie.standard.v1' or 'amitie.voz_color.v1').",
+            "examples": [
+              "amitie.standard.v1"
+            ]
+          },
+          "audio_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Ref",
+            "description": "URL to stream generated TTS audio for voice accessibility (REQ-ACC-03).",
+            "examples": [
+              "/api/audio/asset_123"
+            ]
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "Structured error code (e.g. 'provider_unavailable', 'bad_request')."
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable",
+            "description": "Indicates whether the client may retry this turn (REQ-NFR-04).",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "AgentResponse",
+        "description": "Standard agent turn response carrying the generated A2UI interface and metadata.",
+        "examples": [
+          {
+            "a2ui": [
+              {
+                "catalogId": "amitie.standard.v1",
+                "root": "root",
+                "surfaceId": "surf_1a2b3c4d",
+                "type": "beginRendering"
+              }
+            ],
+            "assistant_text": "He analizado tus deudas y reestructurado el plan.",
+            "audio_ref": "/api/audio/asset_123",
+            "catalog_id": "amitie.standard.v1",
+            "issues": [],
+            "retryable": false,
+            "status": "ok",
+            "surface_id": "surf_1a2b3c4d"
+          }
+        ]
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HttpErrorDetail": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "Human-readable explanation of why the request failed.",
+            "examples": [
+              "unknown session"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "HttpErrorDetail",
+        "description": "Standard HTTP error response payload.",
+        "examples": [
+          {
+            "detail": "unknown session"
+          }
+        ]
+      },
+      "MessageRequest": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id",
+            "description": "Active conversation session ID.",
+            "examples": [
+              "sess_demo"
+            ]
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text",
+            "description": "User message in natural language. Required if audio_b64 is omitted.",
+            "examples": [
+              "Tengo cinco deudas y no me alcanza el mes"
+            ]
+          },
+          "audio_b64": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio B64",
+            "description": "Base64-encoded audio. Transcribed via voice MCP when text is absent (REQ-ACC-04)."
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "description": "BCP-47 language tag for audio transcription.",
+            "default": "es-MX",
+            "examples": [
+              "es-MX"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id"
+        ],
+        "title": "MessageRequest",
+        "description": "Payload containing the user's natural language or voice utterance.",
+        "examples": [
+          {
+            "language": "es-MX",
+            "session_id": "sess_demo",
+            "text": "Tengo cinco deudas y no me alcanza el mes"
+          }
+        ]
+      },
+      "NegotiationRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id",
+            "description": "User identifier negotiating terms.",
+            "default": "u_ana",
+            "examples": [
+              "u_ana"
+            ]
+          },
+          "position": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Position",
+            "description": "User-proposed terms or counteroffer parameters."
+          }
+        },
+        "type": "object",
+        "title": "NegotiationRequest",
+        "description": "Payload to advance or intervene in the El Revés negotiation loop.",
+        "examples": [
+          {
+            "position": {
+              "proposed_payment": 2800.0,
+              "proposed_rate": 0.22,
+              "proposed_term_months": 36
+            },
+            "user_id": "u_ana"
+          }
+        ]
+      },
+      "SavingBagAnswerRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id",
+            "description": "Owner user identifier.",
+            "default": "u_ana",
+            "examples": [
+              "u_ana"
+            ]
+          },
+          "answers": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Answers",
+            "description": "Key-value answers matching the agent's generated clarification questions."
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id",
+            "description": "Optional session to bind the updated UI to."
+          }
+        },
+        "type": "object",
+        "title": "SavingBagAnswerRequest",
+        "description": "Answers submitted for clarification questions about a saving bag.",
+        "examples": [
+          {
+            "answers": [
+              {
+                "question_id": "duration_days",
+                "value": 14
+              },
+              {
+                "question_id": "travelers",
+                "value": 2
+              },
+              {
+                "question_id": "season",
+                "value": "cherry_blossom"
+              }
+            ],
+            "user_id": "u_ana"
+          }
+        ]
+      },
+      "SavingBagCreateRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id",
+            "description": "Owner user identifier.",
+            "default": "u_ana",
+            "examples": [
+              "u_ana"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Name of the savings goal (e.g. 'Viaje a Japón').",
+            "examples": [
+              "Viaje a Japón"
+            ]
+          },
+          "target_amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Amount",
+            "description": "User-estimated target cost in MXN.",
+            "examples": [
+              75000.0
+            ]
+          },
+          "target_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Date",
+            "description": "Target completion date in ISO format (YYYY-MM-DD).",
+            "examples": [
+              "2027-04-15"
+            ]
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id",
+            "description": "Optional active session to bind generated UI to.",
+            "examples": [
+              "sess_demo"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "SavingBagCreateRequest",
+        "description": "Payload to initiate a new Saving Bag goal.",
+        "examples": [
+          {
+            "name": "Viaje a Japón",
+            "session_id": "sess_demo",
+            "target_amount": 75000.0,
+            "target_date": "2027-04-15",
+            "user_id": "u_ana"
+          }
+        ]
+      },
+      "SavingBagRefreshRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id",
+            "description": "Owner user identifier.",
+            "default": "u_ana",
+            "examples": [
+              "u_ana"
+            ]
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id",
+            "description": "Optional session identifier."
+          }
+        },
+        "type": "object",
+        "title": "SavingBagRefreshRequest",
+        "description": "Request to refresh real cost research and feasibility calculation.",
+        "examples": [
+          {
+            "user_id": "u_ana"
+          }
+        ]
+      },
+      "SavingBagResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Status ('ok' or 'error').",
+            "examples": [
+              "ok"
+            ]
+          },
+          "bag_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bag Id",
+            "description": "Saving bag identifier.",
+            "examples": [
+              "bag_123"
+            ]
+          },
+          "bag": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bag",
+            "description": "Saving bag entity attributes."
+          },
+          "bags": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Bags",
+            "description": "List of saving bags (populated when listing bags)."
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan",
+            "description": "Calculated financial feasibility plan (INV-015)."
+          },
+          "surface_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Surface Id",
+            "description": "Active A2UI surface ID for the saving bag."
+          },
+          "a2ui": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "A2Ui",
+            "description": "Full A2UI message array for rendering."
+          },
+          "assistant_text": {
+            "type": "string",
+            "title": "Assistant Text",
+            "description": "Agent commentary and explanation.",
+            "default": ""
+          },
+          "issues": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Issues",
+            "description": "Issues or warnings encountered."
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message",
+            "description": "Human-readable status or error message."
+          },
+          "catalog_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalog Id",
+            "description": "A2UI catalog identifier."
+          },
+          "audio_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Ref",
+            "description": "Audio stream reference URL."
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "Structured error code."
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable",
+            "description": "Whether this operation is retryable.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "SavingBagResponse",
+        "description": "Composite response for Saving Bags operations including metadata and A2UI plan.",
+        "examples": [
+          {
+            "a2ui": [],
+            "assistant_text": "He investigado los costos reales y calculado tu plan de ahorro.",
+            "bag": {
+              "id": "bag_123",
+              "name": "Viaje a Japón",
+              "target_amount": 75000.0
+            },
+            "bag_id": "bag_123",
+            "bags": [],
+            "issues": [],
+            "plan": {
+              "feasible": true,
+              "monthly_saving": 4500.0,
+              "months": 16
+            },
+            "status": "ok",
+            "surface_id": "surf_bag123"
+          }
+        ]
+      },
+      "SessionRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id",
+            "description": "User identifier to bind this session to (e.g. seeded demo user 'u_ana').",
+            "default": "u_ana",
+            "examples": [
+              "u_ana"
+            ]
+          }
+        },
+        "type": "object",
+        "title": "SessionRequest",
+        "description": "Payload to initialize a new conversation session.",
+        "examples": [
+          {
+            "user_id": "u_ana"
+          }
+        ]
+      },
+      "SessionResponse": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id",
+            "description": "Unique session identifier for following agent turns.",
+            "examples": [
+              "sess_1a2b3c4d5e6f"
+            ]
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id",
+            "description": "User identifier associated with the session.",
+            "examples": [
+              "u_ana"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "user_id"
+        ],
+        "title": "SessionResponse",
+        "description": "Response returned upon session creation.",
+        "examples": [
+          {
+            "session_id": "sess_1a2b3c4d5e6f",
+            "user_id": "u_ana"
+          }
+        ]
+      },
+      "TraceResponse": {
+        "properties": {
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id",
+            "description": "Unique trace identifier.",
+            "examples": [
+              "tr_1a2b3c4d"
+            ]
+          },
+          "events": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Events",
+            "description": "Array of structured trace event objects."
+          }
+        },
+        "type": "object",
+        "required": [
+          "trace_id"
+        ],
+        "title": "TraceResponse",
+        "description": "Chronological execution trace for a single request (INV-018, REQ-NFR-02).",
+        "examples": [
+          {
+            "events": [
+              {
+                "kind": "llm_call",
+                "latency_ms": 450,
+                "model": "gemini-2.5-flash",
+                "provider": "gemini",
+                "timestamp": "2026-09-12T10:00:00Z"
+              }
+            ],
+            "trace_id": "tr_1a2b3c4d"
+          }
+        ]
+      },
+      "UiResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Status of the hydration request ('ok' or 'error').",
+            "examples": [
+              "ok"
+            ]
+          },
+          "surface_id": {
+            "type": "string",
+            "title": "Surface Id",
+            "description": "Surface identifier.",
+            "examples": [
+              "surf_1a2b3c4d"
+            ]
+          },
+          "a2ui": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "A2Ui",
+            "description": "Freshly hydrated A2UI message array (INV-022)."
+          },
+          "issues": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Issues",
+            "description": "Hydration or revalidation issues, if any."
+          },
+          "catalog_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalog Id",
+            "description": "Catalog identifier for rendering.",
+            "examples": [
+              "amitie.standard.v1"
+            ]
+          },
+          "audio_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Ref",
+            "description": "Optional audio asset reference."
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "surface_id"
+        ],
+        "title": "UiResponse",
+        "description": "Response containing a freshly hydrated A2UI surface.",
+        "examples": [
+          {
+            "a2ui": [],
+            "catalog_id": "amitie.standard.v1",
+            "issues": [],
+            "status": "ok",
+            "surface_id": "surf_1a2b3c4d"
+          }
+        ]
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "session",
+      "description": "Create a conversation session (`REQ-API-01`)."
+    },
+    {
+      "name": "message",
+      "description": "Send user text or audio to the agent (`REQ-API-02`)."
+    },
+    {
+      "name": "action",
+      "description": "Closed-loop A2UI action back to the agent (`REQ-API-03`)."
+    },
+    {
+      "name": "ui",
+      "description": "Hydrate a persisted surface with fresh data (`REQ-API-04`)."
+    },
+    {
+      "name": "saving-bags",
+      "description": "Saving Bags pillar (`REQ-API-05`)."
+    },
+    {
+      "name": "negotiation",
+      "description": "El Revés bank negotiation (`REQ-API-06`)."
+    },
+    {
+      "name": "audio",
+      "description": "Cached TTS bytes (`REQ-API-07`)."
+    },
+    {
+      "name": "debug",
+      "description": "Kill Test and traces (`REQ-API-08`). Not a product surface."
+    },
+    {
+      "name": "ops",
+      "description": "Process health. Not part of the frozen product contract."
+    }
+  ]
+}

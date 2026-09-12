@@ -15,12 +15,28 @@ from ..dependencies import (
     get_negotiation_service,
     get_toolbox,
 )
-from ..schemas import ActionRequest, AgentResponse
+from ..schemas import ActionRequest, AgentResponse, HttpErrorDetail
 
 router = APIRouter(prefix="/api", tags=["action"])
 
 
-@router.post("/action", response_model=AgentResponse)
+@router.post(
+    "/action",
+    response_model=AgentResponse,
+    summary="Submit closed-loop A2UI action (REQ-API-03)",
+    response_description="Updated A2UI interface and assistant state after processing component action",
+    operation_id="post_action",
+    responses={
+        200: {
+            "description": "Action processed successfully; returns updated A2UI message array.",
+            "model": AgentResponse,
+        },
+        404: {
+            "description": "Surface not found.",
+            "model": HttpErrorDetail,
+        },
+    },
+)
 async def post_action(
     payload: ActionRequest,
     database: DatabasePort = Depends(get_database),
@@ -28,6 +44,15 @@ async def post_action(
     agent: AgentService = Depends(get_agent_service),
     negotiation: NegotiationService = Depends(get_negotiation_service),
 ) -> AgentResponse:
+    """Submit a user interaction emitted by an A2UI component (REQ-API-03, INV-017).
+
+    - Closes the loop: interactions such as moving a liquidity/term slider (`tune_tradeoff`),
+      toggling assumptions (`toggle_assumption`), or accepting a debt consolidation offer (`accept_offer`)
+      are fed back into the agent context.
+    - If accepting an offer, launches or transitions to the El Revés negotiation loop.
+    - If tuning tradeoffs or assumptions, recalculates the deterministic financial math via MCP
+      and triggers structural revalidation or BreakAlert mutation.
+    """
     surface = await database.fetch_one(
         "SELECT id, user_id FROM generated_ui WHERE id = ?", (payload.surface_id,)
     )

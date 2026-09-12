@@ -12,6 +12,8 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.responses import HTMLResponse
 
 from agent.negotiation import NegotiationService
 from agent.service import AgentService
@@ -30,6 +32,7 @@ from providers.registry import build_llm_gateway, build_research, build_stt, bui
 from providers.research import ResearchProvider
 from providers.voice import STTProvider, TTSProvider
 
+from .openapi import OPENAPI_DESCRIPTION, OPENAPI_TAGS
 from .routers import action, audio, debug, message, negotiation, saving_bags, session, ui
 
 
@@ -92,7 +95,16 @@ def create_app(
             await toolbox.__aexit__(None, None, None)
             await database.close()
 
-    app = FastAPI(title="La Mesa API", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(
+        title="La Mesa API",
+        version="0.1.0",
+        description=OPENAPI_DESCRIPTION,
+        openapi_tags=OPENAPI_TAGS,
+        docs_url="/docs",
+        redoc_url="/redoc",
+        openapi_url="/openapi.json",
+        lifespan=lifespan,
+    )
     app.add_middleware(
         CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
     )
@@ -107,8 +119,33 @@ def create_app(
     app.include_router(audio.router)
     app.include_router(debug.router)
 
-    @app.get("/healthz")
+    @app.get("/", include_in_schema=False)
+    async def root() -> dict[str, str]:
+        return {
+            "service": "La Mesa API",
+            "docs": "/docs",
+            "swagger": "/swagger",
+            "openapi": "/openapi.json",
+            "health": "/healthz",
+        }
+
+    @app.get("/swagger", include_in_schema=False)
+    async def swagger_ui() -> HTMLResponse:
+        """Serve Swagger UI directly at /swagger."""
+        return get_swagger_ui_html(
+            openapi_url=app.openapi_url or "/openapi.json",
+            title=f"{app.title} - Swagger UI",
+        )
+
+    @app.get(
+        "/healthz",
+        tags=["ops"],
+        summary="Service liveness probe",
+        response_description="Service status indicator",
+        responses={200: {"description": "Process is alive and responsive"}},
+    )
     async def healthz() -> dict[str, str]:
+        """Liveness health check endpoint. Returns `status: ok` when process is running."""
         return {"status": "ok"}
 
     return app

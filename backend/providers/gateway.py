@@ -20,6 +20,24 @@ from .base import LLMProvider, LLMResult, Messages, ProviderUnavailableError, To
 logger = logging.getLogger(__name__)
 
 
+class NullLLM:
+    """Used when no LLM API key is configured so the HTTP process can still boot."""
+
+    name = "none"
+    model = "none"
+
+    async def generate(
+        self,
+        messages: Messages,
+        tools: Tools | None = None,
+        response_schema: dict[str, Any] | None = None,
+        temperature: float | None = None,
+    ) -> LLMResult:
+        raise ProviderUnavailableError(
+            "no LLM provider is configured; set GEMINI_API_KEY or DEEPSEEK_API_KEY"
+        )
+
+
 class FallbackLLM:
     def __init__(
         self,

@@ -97,18 +97,48 @@ def _probe_stt(provider: STTProvider) -> ProviderHealth:
     )
 
 
-@router.get("/debug/trace/{trace_id}", response_model=TraceResponse)
+@router.get(
+    "/debug/trace/{trace_id}",
+    response_model=TraceResponse,
+    summary="Fetch structured traces (REQ-API-08, REQ-NFR-02)",
+    response_description="Chronological trace events including latency, model, tokens, and tool calls",
+    operation_id="get_trace",
+    responses={
+        200: {
+            "description": "Trace events retrieved from SQLite observability table.",
+            "model": TraceResponse,
+        },
+    },
+)
 async def get_trace(trace_id: str, tracer: Tracer = Depends(get_tracer)) -> TraceResponse:
+    """Retrieve full structured trace records for a given request trace_id (INV-018)."""
     events = await tracer.history(trace_id)
     return TraceResponse(trace_id=trace_id, events=events)
 
 
-@router.get("/debug/kill-test/{surface_id}", response_model=UiResponse)
+@router.get(
+    "/debug/kill-test/{surface_id}",
+    response_model=UiResponse,
+    summary="Serve frozen Kill Test UI (REQ-API-08, REQ-KT-01)",
+    response_description="Persisted UI with frozen data and zero agent execution",
+    operation_id="get_kill_test",
+    responses={
+        200: {
+            "description": "Frozen UI artifact served successfully without LLM involvement.",
+            "model": UiResponse,
+        },
+        404: {
+            "description": "Frozen artifact not found for this surface.",
+            "model": HttpErrorDetail,
+        },
+    },
+)
 async def get_kill_test(
     surface_id: str, toolbox: Toolbox = Depends(get_toolbox)
 ) -> UiResponse:
     """Serve a persisted surface from its genuine frozen artifact, with no agent
-    and no live recomputation (REQ-KT-01, REQ-KT-02, INV-032)."""
+    and no live recomputation (REQ-KT-01, REQ-KT-02, INV-032). Proves the interface
+    collapses without the real-time agent."""
     result = await toolbox.call("kill_test", {"surface_id": surface_id})
     if result.get("status") != "ok":
         detail = "; ".join(result.get("issues") or ["no frozen artifact"])

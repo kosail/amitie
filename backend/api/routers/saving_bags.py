@@ -17,6 +17,7 @@ from mcp_servers.toolbox import Toolbox
 
 from ..dependencies import get_agent_service, get_database, get_toolbox, now_iso
 from ..schemas import (
+    HttpErrorDetail,
     SavingBagAnswerRequest,
     SavingBagCreateRequest,
     SavingBagRefreshRequest,
@@ -66,13 +67,31 @@ def _response(result: dict, **extra) -> SavingBagResponse:
     )
 
 
-@router.post("/saving-bags", response_model=SavingBagResponse)
+@router.post(
+    "/saving-bags",
+    response_model=SavingBagResponse,
+    summary="Create a saving bag (REQ-API-05)",
+    response_description="Created bag metadata and generated clarification questionnaire UI",
+    operation_id="create_saving_bag",
+    responses={
+        200: {
+            "description": "Saving bag initialized; returns clarification questions in A2UI form.",
+            "model": SavingBagResponse,
+        },
+    },
+)
 async def create_saving_bag(
     payload: SavingBagCreateRequest,
     database: DatabasePort = Depends(get_database),
     toolbox: Toolbox = Depends(get_toolbox),
     agent: AgentService = Depends(get_agent_service),
 ) -> SavingBagResponse:
+    """Create a new saving bag goal (REQ-API-05).
+
+    - Persists the saving bag entity in SQLite via the `savings` MCP server.
+    - Agent analyzes the goal name (e.g. 'Viaje a Japón') and infers clarifying questions.
+    - Emits an interactive questionnaire surface rendered via A2UI.
+    """
     created = await toolbox.call(
         "create_bag",
         {
@@ -99,20 +118,51 @@ async def create_saving_bag(
     return _response(result, bag_id=bag["id"], bag=bag)
 
 
-@router.get("/saving-bags", response_model=SavingBagResponse)
+@router.get(
+    "/saving-bags",
+    response_model=SavingBagResponse,
+    summary="List saving bags (REQ-API-05)",
+    response_description="List of all saving bags owned by the user",
+    operation_id="list_saving_bags",
+    responses={
+        200: {
+            "description": "Array of saving bag records.",
+            "model": SavingBagResponse,
+        },
+    },
+)
 async def list_saving_bags(
-    user_id: str = Query(default="u_ana"), toolbox: Toolbox = Depends(get_toolbox)
+    user_id: str = Query(default="u_ana", description="User identifier whose saving bags to list."),
+    toolbox: Toolbox = Depends(get_toolbox),
 ) -> SavingBagResponse:
+    """List all saving bags created by a given user."""
     listed = await toolbox.call("list_bags", {"user_id": user_id})
     return SavingBagResponse(status="ok", bags=listed.get("bags", []))
 
 
-@router.get("/saving-bags/{bag_id}", response_model=SavingBagResponse)
+@router.get(
+    "/saving-bags/{bag_id}",
+    response_model=SavingBagResponse,
+    summary="Get saving bag details (REQ-API-05)",
+    response_description="Saving bag snapshot, research data, calculated plan, and hydrated A2UI",
+    operation_id="get_saving_bag",
+    responses={
+        200: {
+            "description": "Saving bag details and active hydrated surface.",
+            "model": SavingBagResponse,
+        },
+        404: {
+            "description": "Saving bag not found.",
+            "model": HttpErrorDetail,
+        },
+    },
+)
 async def get_saving_bag(
     bag_id: str,
     database: DatabasePort = Depends(get_database),
     toolbox: Toolbox = Depends(get_toolbox),
 ) -> SavingBagResponse:
+    """Retrieve details, current plan, and hydrated UI for a saving bag."""
     snapshot = await toolbox.call("get_savings_snapshot", {"bag_id": bag_id})
     if snapshot.get("status") != "ok":
         raise HTTPException(status_code=404, detail="unknown saving bag")
@@ -138,7 +188,23 @@ async def get_saving_bag(
     )
 
 
-@router.post("/saving-bags/{bag_id}/answer", response_model=SavingBagResponse)
+@router.post(
+    "/saving-bags/{bag_id}/answer",
+    response_model=SavingBagResponse,
+    summary="Submit answers to saving bag questions (REQ-API-05)",
+    response_description="Updated savings plan and generated A2UI plan view",
+    operation_id="answer_saving_bag",
+    responses={
+        200: {
+            "description": "Answers processed; research and deterministic feasibility plan generated.",
+            "model": SavingBagResponse,
+        },
+        404: {
+            "description": "Saving bag not found.",
+            "model": HttpErrorDetail,
+        },
+    },
+)
 async def answer_saving_bag(
     bag_id: str,
     payload: SavingBagAnswerRequest,
@@ -146,6 +212,13 @@ async def answer_saving_bag(
     toolbox: Toolbox = Depends(get_toolbox),
     agent: AgentService = Depends(get_agent_service),
 ) -> SavingBagResponse:
+    """Submit user answers to the saving bag questionnaire (REQ-API-05).
+
+    - Persists answers via the `savings` MCP server.
+    - Researches real itemized costs (using Gemini grounding or static price table fallback).
+    - Computes mathematical feasibility against user's actual cash flow (INV-015).
+    - Emits a dated, funded plan in A2UI with milestone breakdown.
+    """
     answered = await toolbox.call(
         "answer_bag", {"bag_id": bag_id, "answers": payload.answers}
     )
@@ -166,7 +239,23 @@ async def answer_saving_bag(
     return _response(result, bag_id=bag_id)
 
 
-@router.post("/saving-bags/{bag_id}/refresh", response_model=SavingBagResponse)
+@router.post(
+    "/saving-bags/{bag_id}/refresh",
+    response_model=SavingBagResponse,
+    summary="Refresh saving bag research (REQ-API-05)",
+    response_description="Recalculated feasibility plan with fresh research and updated A2UI surface",
+    operation_id="refresh_saving_bag",
+    responses={
+        200: {
+            "description": "Research refreshed and plan recomputed successfully.",
+            "model": SavingBagResponse,
+        },
+        404: {
+            "description": "Saving bag not found.",
+            "model": HttpErrorDetail,
+        },
+    },
+)
 async def refresh_saving_bag(
     bag_id: str,
     payload: SavingBagRefreshRequest,
@@ -174,6 +263,7 @@ async def refresh_saving_bag(
     toolbox: Toolbox = Depends(get_toolbox),
     agent: AgentService = Depends(get_agent_service),
 ) -> SavingBagResponse:
+    """Refresh price research and recalculate feasibility plan for a saving bag (REQ-API-05)."""
     refreshed = await toolbox.call("refresh_bag", {"bag_id": bag_id})
     if refreshed.get("status") != "ok":
         raise HTTPException(status_code=404, detail="unknown saving bag")
