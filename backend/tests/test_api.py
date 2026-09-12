@@ -163,6 +163,10 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(docs.status_code, 200)
             self.assertIn("text/html", docs.headers.get("content-type", ""))
 
+            swagger = client.get("/swagger")
+            self.assertEqual(swagger.status_code, 200)
+            self.assertIn("text/html", swagger.headers.get("content-type", ""))
+
             spec = client.get("/openapi.json")
             self.assertEqual(spec.status_code, 200)
             body = spec.json()

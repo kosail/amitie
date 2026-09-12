@@ -12,6 +12,8 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.responses import HTMLResponse
 
 from agent.negotiation import NegotiationService
 from agent.service import AgentService
@@ -121,9 +123,18 @@ def create_app(
         return {
             "service": "La Mesa API",
             "docs": "/docs",
+            "swagger": "/swagger",
             "openapi": "/openapi.json",
             "health": "/healthz",
         }
+
+    @app.get("/swagger", include_in_schema=False)
+    async def swagger_ui() -> HTMLResponse:
+        """Serve Swagger UI directly at /swagger."""
+        return get_swagger_ui_html(
+            openapi_url=app.openapi_url or "/openapi.json",
+            title=f"{app.title} - Swagger UI",
+        )
 
     @app.get(
         "/healthz",

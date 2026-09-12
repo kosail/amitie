@@ -380,3 +380,14 @@
 - impact: 147 tests passing. Swagger UI (`/docs`), ReDoc (`/redoc`), and `openapi.json` now have detailed Markdown documentation for every route and model.
 - follow_ups: none
 
+## [2026-09-12] change — Added explicit /swagger endpoint serving Swagger UI
+- agent: Antigravity
+- requirements: REQ-API-01..08
+- invariants: INV-010, INV-011, INV-023
+- files: `backend/api/app.py`, `backend/api/openapi.py`, `backend/tests/test_api.py`, `backend/README.md`
+- decision: Added `GET /swagger` serving Swagger UI directly via `get_swagger_ui_html`, alongside the existing `/docs` endpoint. Added `/swagger` link to the landing dictionary at `GET /`. Updated `test_openapi_frozen_contract` to assert `GET /swagger` returns 200 with HTML.
+- rationale: Developer ergonomics — allow developers to reach Swagger UI directly at `/swagger`.
+- impact: Both `/swagger` and `/docs` now render Swagger UI. All tests pass.
+- follow_ups: none
+
+

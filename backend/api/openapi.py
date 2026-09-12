@@ -12,7 +12,7 @@ message array. No WebSockets or SSE (INV-010).
 Frozen routes live in `SPECS.md` §8 (`REQ-API-01` … `REQ-API-08`). The frontend
 consumes this HTTP API only; LLM providers are not called from the client.
 
-Interactive docs: `/docs` (Swagger UI) and `/redoc`. Machine-readable spec:
+Interactive docs: `/swagger` or `/docs` (Swagger UI) and `/redoc`. Machine-readable spec:
 `/openapi.json`.
 """.strip()
 

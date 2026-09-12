@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "La Mesa API",
-    "description": "REST JSON contract for **La Mesa**. Every mutating response carries a full A2UI\nmessage array. No WebSockets or SSE (INV-010).\n\nFrozen routes live in `SPECS.md` §8 (`REQ-API-01` … `REQ-API-08`). The frontend\nconsumes this HTTP API only; LLM providers are not called from the client.\n\nInteractive docs: `/docs` (Swagger UI) and `/redoc`. Machine-readable spec:\n`/openapi.json`.",
+    "description": "REST JSON contract for **La Mesa**. Every mutating response carries a full A2UI\nmessage array. No WebSockets or SSE (INV-010).\n\nFrozen routes live in `SPECS.md` §8 (`REQ-API-01` … `REQ-API-08`). The frontend\nconsumes this HTTP API only; LLM providers are not called from the client.\n\nInteractive docs: `/swagger` or `/docs` (Swagger UI) and `/redoc`. Machine-readable spec:\n`/openapi.json`.",
     "version": "0.1.0"
   },
   "paths": {
