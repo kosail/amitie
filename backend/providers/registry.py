@@ -70,7 +70,7 @@ def build_research(settings: Settings) -> ResearchProvider:
     return FallbackResearch(primary, fallback)
 
 
-def _build_tts(settings: Settings, name: str) -> TTSProvider:
+def build_tts_provider(settings: Settings, name: str) -> TTSProvider:
     if name in ("edge_tts", "edge-tts", "edge"):
         from .voice import EdgeTTS
 
@@ -88,18 +88,20 @@ def _build_tts(settings: Settings, name: str) -> TTSProvider:
     raise ValueError(f"unknown TTS provider: {name!r}")
 
 
-def build_tts(settings: Settings) -> TTSProvider:
-    name = settings.tts_provider
+def build_tts(
+    settings: Settings, *, provider: str | None = None, fallback: str | None = None
+) -> TTSProvider:
+    name = provider or settings.tts_provider
+    fallback_name = settings.tts_fallback if fallback is None else fallback
     if name == "elevenlabs" and not settings.elevenlabs_api_key:
-        name = settings.tts_fallback or "edge_tts"
-    primary = _build_tts(settings, name)
-    fallback_name = settings.tts_fallback
+        name = fallback_name or "edge_tts"
+    primary = build_tts_provider(settings, name)
     if not fallback_name or fallback_name == name:
         return primary
-    return FallbackTTS(primary, _build_tts(settings, fallback_name))
+    return FallbackTTS(primary, build_tts_provider(settings, fallback_name))
 
 
-def _build_stt(settings: Settings, name: str) -> STTProvider:
+def build_stt_provider(settings: Settings, name: str) -> STTProvider:
     if name == "gemini":
         from .voice import GeminiSTT
 
@@ -113,12 +115,14 @@ def _build_stt(settings: Settings, name: str) -> STTProvider:
     raise ValueError(f"unknown STT provider: {name!r}")
 
 
-def build_stt(settings: Settings) -> STTProvider:
-    name = settings.stt_provider
+def build_stt(
+    settings: Settings, *, provider: str | None = None, fallback: str | None = None
+) -> STTProvider:
+    name = provider or settings.stt_provider
+    fallback_name = settings.stt_fallback if fallback is None else fallback
     if name == "gemini" and not settings.gemini_api_key:
-        name = settings.stt_fallback or "faster_whisper"
-    primary = _build_stt(settings, name)
-    fallback_name = settings.stt_fallback
+        name = fallback_name or "faster_whisper"
+    primary = build_stt_provider(settings, name)
     if not fallback_name or fallback_name == name:
         return primary
-    return FallbackSTT(primary, _build_stt(settings, fallback_name))
+    return FallbackSTT(primary, build_stt_provider(settings, fallback_name))

@@ -81,7 +81,7 @@ Root documents: `AGENTS.md`, `INVARIANTS.md`, `SPECS.md`, `CHANGELOG.md`, and `A
 
 ```
 /backend
-  api/            FastAPI app factory, lifespan, DI, routers (session, message, action, ui, negotiation, saving_bags, audio, debug)
+  api/            FastAPI app factory, lifespan, DI, routers (session, message, action, ui, negotiation, saving_bags, audio, debug-only: voice, debug)
   agent/          ADK orchestrator: model.py (GatewayLlm), tools.py (MCP->ADK), service.py, negotiation.py (El Reves), speech.py
   providers/      base interfaces + gemini, deepseek, research (grounding + static), voice (TTS/STT), registry
   ui_contract/    catalog.json + voz_color.json + *.schema.json + prompt.py + validator.py + vendored A2UI schemas
@@ -207,8 +207,8 @@ python -m unittest discover -s tests -t .          # run backend tests
 Expose the local backend to the internet through a Cloudflare Tunnel (no data leaves the host):
 
 ```sh
-# once the FastAPI app exists and listens on 127.0.0.1:8000
+# once the FastAPI app listens on 127.0.0.1:8000
 cloudflared tunnel --url http://localhost:8000
 ```
 
-The API and MCP servers are not implemented yet; until then the only runnable pieces are `python -m db.init` and the test suite.
+Diagnostics live under `/debug/*` (`trace`, `kill-test`, `providers`, `stt`, `tts`) and are **not** part of the frozen frontend contract. For a public run, set `ENABLE_DEBUG_ENDPOINTS=0` to remove them from the app and OpenAPI.

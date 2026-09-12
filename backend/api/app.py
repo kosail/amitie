@@ -26,11 +26,39 @@ from mcp_servers.voice.server import build_voice_server
 from observability.middleware import TraceMiddleware
 from observability.tracing import Tracer
 from providers.base import LLMProvider
-from providers.registry import build_llm_gateway, build_research, build_stt, build_tts
+from providers.registry import (
+    build_llm_gateway,
+    build_research,
+    build_stt,
+    build_stt_provider,
+    build_tts,
+    build_tts_provider,
+)
 from providers.research import ResearchProvider
 from providers.voice import STTProvider, TTSProvider
 
-from .routers import action, audio, debug, message, negotiation, saving_bags, session, ui
+from .routers import (
+    action,
+    audio,
+    debug,
+    message,
+    negotiation,
+    saving_bags,
+    session,
+    ui,
+    voice,
+)
+
+
+def _provider_options(settings: Settings, names: tuple[str, ...], builder) -> dict:
+    """Build individually-addressable providers so an endpoint can force one."""
+    options: dict = {}
+    for name in names:
+        try:
+            options[name] = builder(settings, name)
+        except Exception:
+            continue
+    return options
 
 
 def create_app(
@@ -40,6 +68,8 @@ def create_app(
     research: ResearchProvider | None = None,
     tts: TTSProvider | None = None,
     stt: STTProvider | None = None,
+    tts_options: dict[str, TTSProvider] | None = None,
+    stt_options: dict[str, STTProvider] | None = None,
 ) -> FastAPI:
     load_dotenv()
     resolved = settings or Settings.from_env()
@@ -52,13 +82,24 @@ def create_app(
         research_provider = research or build_research(resolved)
         tts_provider = tts or build_tts(resolved)
         stt_provider = stt or build_stt(resolved)
+        resolved_tts_options = tts_options if tts_options is not None else _provider_options(
+            resolved, ("elevenlabs", "edge_tts"), build_tts_provider
+        )
+        resolved_stt_options = stt_options if stt_options is not None else _provider_options(
+            resolved, ("gemini", "faster_whisper"), build_stt_provider
+        )
         toolbox = InProcessToolbox(
             {
                 "finance": build_finance_server(database),
                 "savings": build_savings_server(database, research_provider),
                 "ui": build_ui_server(database),
                 "voice": build_voice_server(
-                    database, tts_provider, stt_provider, cache_dir=resolved.audio_cache_dir
+                    database,
+                    tts_provider,
+                    stt_provider,
+                    tts_options=resolved_tts_options,
+                    stt_options=resolved_stt_options,
+                    cache_dir=resolved.audio_cache_dir,
                 ),
             }
         )
@@ -105,7 +146,10 @@ def create_app(
     app.include_router(saving_bags.router)
     app.include_router(ui.router)
     app.include_router(audio.router)
-    app.include_router(debug.router)
+    if resolved.enable_debug_endpoints:
+        # Diagnostics only: not part of the frozen frontend contract (INV-023).
+        app.include_router(voice.router)
+        app.include_router(debug.router)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:

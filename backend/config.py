@@ -52,6 +52,7 @@ def _as_int(name: str, default: str) -> int:
 class Settings:
     database_path: str = "./data/amitie.sqlite3"
     log_level: str = "INFO"
+    enable_debug_endpoints: bool = True
 
     llm_provider: str = "gemini"
     llm_fallback: str = "deepseek"
@@ -86,6 +87,7 @@ class Settings:
         return cls(
             database_path=os.environ.get("DATABASE_PATH", "./data/amitie.sqlite3"),
             log_level=os.environ.get("LOG_LEVEL", "INFO").strip().upper(),
+            enable_debug_endpoints=_as_bool("ENABLE_DEBUG_ENDPOINTS", "1"),
             llm_provider=os.environ.get("LLM_PROVIDER", "gemini").strip().lower(),
             llm_fallback=os.environ.get("LLM_FALLBACK", "deepseek").strip().lower(),
             llm_failover_cooldown_seconds=_as_float("LLM_FAILOVER_COOLDOWN_SECONDS", "30"),

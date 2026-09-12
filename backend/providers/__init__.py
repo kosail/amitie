@@ -16,7 +16,15 @@ from .base import (
     Usage,
 )
 from .gateway import FallbackLLM
-from .registry import build_llm, build_llm_gateway, build_research, build_stt, build_tts
+from .registry import (
+    build_llm,
+    build_llm_gateway,
+    build_research,
+    build_stt,
+    build_stt_provider,
+    build_tts,
+    build_tts_provider,
+)
 from .research import (
     FallbackResearch,
     GeminiGroundingResearch,
@@ -71,5 +79,7 @@ __all__ = [
     "build_llm_gateway",
     "build_research",
     "build_stt",
+    "build_stt_provider",
     "build_tts",
+    "build_tts_provider",
 ]

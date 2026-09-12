@@ -11,6 +11,7 @@ a2ui-agent-sdk>=0.6
 jsonschema>=4.18
 referencing>=0.30
 edge-tts>=6.1
+
 # Optional STT fallback (heavy: pulls ctranslate2/onnxruntime). Install it only
 # where faster-whisper is wanted; the adapter imports it lazily:
-# faster-whisper>=1.0
+faster-whisper>=1.0

@@ -359,3 +359,23 @@
 - rationale: The offline suite uses scripted/fake providers, so it could not catch a vendor request-shape bug; the real run revealed a 100%-reproducible Gemini 400. Fail-fast on response errors is intentional (adapter bugs should be visible, not masked by fallback), so the fix is in the adapter plus explicit diagnostics (INV-012 keeps the failover chain meaningful).
 - impact: Full suite now 146 tests, all passing (4 new: Gemini role regression, DeepSeek id linkage, two doctor tests). The golden path now reports `FAILED` with the responsible provider instead of a false `OK`. Live confirmation against real Gemini/ElevenLabs requires the user's environment (network/keys are unavailable to the agent here).
 - follow_ups: Re-run the live rehearsal; if `research`/`tts` fail, consider tracing those providers so `/debug/trace` covers them too.
+
+## [2026-09-12] change — isolated voice I/O endpoints (POST /api/stt, POST /api/tts)
+- agent: opencode / deepseek-flash
+- requirements: REQ-ACC-04, REQ-ACC-05, REQ-API-07
+- invariants: INV-012, INV-013, INV-014
+- files: `backend/providers/{registry,__init__}.py`, `backend/mcp_servers/voice/{server,service}.py`, `backend/api/{app,schemas}.py`, `backend/api/routers/{voice,__init__}.py`, `backend/tests/test_voice_api.py`, `AGENTS.md`, `backend/README.md`
+- decision: Added two diagnostic endpoints that don't involve the agent/LLM, so Gemini STT and ElevenLabs/edge-tts can be tested directly. `POST /api/stt` decodes base64 audio and returns the transcript; `POST /api/tts` synthesizes, caches into `audio_assets` + `audio_cache/`, and returns `{audio_id, audio_ref, provider, mime, bytes, cached}` (or streams the mp3 with `?raw=true`). Both accept an optional `provider` to force one engine instead of the configured chain, so a silent fallback is visible. Registry exposes public `build_tts_provider`/`build_stt_provider` and `build_tts`/`build_stt` gained `provider`/`fallback` overrides; `build_voice_server` takes per-provider option maps and its tools accept `provider`; `create_app` builds those maps from settings (and accepts injected maps for tests).
+- rationale: The user needed to feed a local `test.mp3` to Gemini STT and to obtain a playable mp3 from ElevenLabs, but the only existing path ran the full agent turn and never returned the transcript. Forcing a provider makes the ElevenLabs voice-id requirement explicit (the doctor had shown a silent fallback to edge-tts).
+- impact: Full suite now 150 tests, all passing (4 new). Endpoints reuse the voice MCP service (cache + `audio_assets`), so `GET /api/audio/{id}` serves what `/api/tts` produces. No change to the agent path.
+- follow_ups: ElevenLabs still needs `ELEVENLABS_VOICE_ID` set to actually be exercised; otherwise forcing `provider=elevenlabs` now reports the error instead of degrading.
+
+## [2026-09-12] change — reclassify voice lab as /debug and add ENABLE_DEBUG_ENDPOINTS
+- agent: opencode / deepseek-flash
+- requirements: REQ-API-08
+- invariants: INV-023
+- files: `backend/api/routers/voice.py`, `backend/api/app.py`, `backend/config.py`, `backend/.env.example`, `backend/tests/test_voice_api.py`, `SPECS.md`, `AGENTS.md`, `backend/README.md`
+- decision: The voice lab endpoints looked like product API. Moved them to `POST /debug/stt` and `POST /debug/tts` with `tags=["debug"]` and an explicit "DEBUG ONLY — not part of the frozen frontend contract" docstring, matching the existing `/debug/*` diagnostics. Added `ENABLE_DEBUG_ENDPOINTS` (default on): when false, `voice.router` and `debug.router` are not included, so every `/debug/*` route (trace, kill-test, providers, stt, tts) disappears from the app and OpenAPI; product routes are unaffected and `POST /api/message` audio STT remains available. Documented the exclusion in `SPECS.md` §8, `AGENTS.md` §11, and the README (product vs diagnostics split, with `curl` examples now under `/debug/*`).
+- rationale: With the backend exposed through the public Cloudflare Tunnel, lab endpoints that call paid vendors (e.g. ElevenLabs) must not look like, or be assumed to be part of, the frontend contract (INV-023). The kill switch lets a public run remove them entirely.
+- impact: Full suite now 151 tests, all passing (1 new kill-switch test). Endpoint paths changed from `/api/stt`/`/api/tts` to `/debug/stt`/`/debug/tts`; `GET /api/audio/{asset_id}` remains a product route.
+- follow_ups: None.

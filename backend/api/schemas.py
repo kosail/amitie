@@ -79,6 +79,42 @@ class ProvidersResponse(BaseModel):
     providers: list[ProviderHealth] = Field(default_factory=list)
 
 
+class SttRequest(BaseModel):
+    audio_b64: str
+    language: str = "es-MX"
+    mime: str = "audio/mpeg"
+    provider: str = ""
+
+
+class SttResponse(BaseModel):
+    status: str
+    text: str = ""
+    provider: str | None = None
+    language: str = "es-MX"
+    error_code: str | None = None
+    message: str | None = None
+
+
+class TtsRequest(BaseModel):
+    text: str
+    voice_id: str = ""
+    speed: float = 1.0
+    provider: str = ""
+
+
+class TtsResponse(BaseModel):
+    status: str
+    audio_id: str | None = None
+    audio_ref: str | None = None
+    provider: str | None = None
+    mime: str | None = None
+    bytes: int | None = None
+    cached: bool = False
+    error_code: str | None = None
+    message: str | None = None
+    issues: list[str] = Field(default_factory=list)
+
+
 class SavingBagCreateRequest(BaseModel):
     user_id: str = "u_ana"
     name: str

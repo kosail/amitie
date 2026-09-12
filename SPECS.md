@@ -77,6 +77,8 @@
 - [x] **REQ-API-07** `GET /api/audio/{asset_id}`
 - [x] **REQ-API-08** `GET /debug/kill-test/{surface_id}`, `GET /debug/trace/{trace_id}`
 
+> **Diagnostics — not part of this frozen contract, and not for frontend use.** The frontend must not depend on `GET /debug/trace/{trace_id}`, `GET /debug/kill-test/{surface_id}`, `GET /debug/providers`, `POST /debug/stt`, or `POST /debug/tts`. They are developer tools and are disabled when `ENABLE_DEBUG_ENDPOINTS=0`.
+
 ## 9. Data
 
 - [x] **REQ-DATA-01** — The local SQLite schema covers: users, accounts, transactions, income_streams, subscriptions, liabilities, lender_policies, saving_bags, saving_bag_answers, saving_bag_research, saving_bag_plan, generated_ui, ui_actions, negotiation_rounds, accessibility_profiles, audio_assets, sessions, traces.
