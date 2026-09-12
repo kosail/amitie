@@ -16,3 +16,12 @@ def schema_statements() -> list[str]:
 
 async def apply_schema(database: DatabasePort) -> None:
     await database.batch([(statement, ()) for statement in schema_statements()])
+    await _ensure_columns(database)
+
+
+async def _ensure_columns(database: DatabasePort) -> None:
+    """Idempotent lightweight migrations for local SQLite databases."""
+    rows = await database.fetch_all("PRAGMA table_info(generated_ui)")
+    columns = {row["name"] for row in rows}
+    if "frozen_json" not in columns:
+        await database.execute("ALTER TABLE generated_ui ADD COLUMN frozen_json TEXT")

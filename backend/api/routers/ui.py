@@ -24,4 +24,6 @@ async def get_ui(
         surface_id=surface_id,
         a2ui=result.get("a2ui", []),
         issues=result.get("issues", []),
+        catalog_id=result.get("catalog_id"),
+        audio_ref=result.get("audio_ref"),
     )

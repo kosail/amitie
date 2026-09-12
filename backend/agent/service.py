@@ -49,6 +49,11 @@ UI_DESCRIPTION = (
     "(redirect.recommended), ofrece un préstamo con OfferCard y, al aceptar, continúa el "
     "flujo de deuda (accept_offer) hacia La Mesa. Usa refresh_bag solo si el usuario pide "
     "actualizar costos.\n"
+    "CAJA DE CRISTAL: si la acción es 'toggle_assumption' (el usuario editó una suposición del "
+    "panel '¿Por qué ves esto?'), aplica el nuevo valor (extra_income/extra_payment/"
+    "expense_reduction en deuda, o answer_bag con days/travelers en ahorro), vuelve a simular "
+    "o recalcular y reemite la superficie con persist_ui. El panel de suposiciones se "
+    "reconstruye automáticamente.\n"
     "En ambos flujos el paso final es SIEMPRE una única llamada a persist_ui. No escribas "
     "la interfaz en texto; el texto es solo para el usuario."
 )
@@ -62,10 +67,12 @@ class AgentService:
         toolbox: Toolbox,
         tracer: Tracer | None = None,
         max_model_calls: int = 6,
+        demo_mode: bool = False,
     ) -> None:
         self._toolbox = toolbox
         self._tracer = tracer
         self._max_calls = max_model_calls
+        self._demo_mode = demo_mode
         self._model = GatewayLlm(model="gateway", provider=provider, max_calls=max_model_calls)
         self._speech = SpeechEnricher(toolbox)
         self._runner: InMemoryRunner | None = None
@@ -153,6 +160,10 @@ class AgentService:
         await self._trace(started, error=error)
 
         if error is not None:
+            if self._demo_mode:
+                cached = await self._cached_response(session_id)
+                if cached is not None:
+                    return cached
             return {"status": "error", "message": error, "assistant_text": assistant_text}
 
         captured = self._captured.get("persist_ui")
@@ -176,6 +187,29 @@ class AgentService:
             "catalog_id": captured.get("catalog_id"),
             "audio_ref": captured.get("audio_ref"),
             "assistant_text": assistant_text,
+        }
+
+    async def _cached_response(self, session_id: str) -> dict[str, Any] | None:
+        """DEMO_MODE: on provider failure, re-serve the session's last surface (INV-004/NFR-04)."""
+        try:
+            session = await self._toolbox.call("get_session", {"session_id": session_id})
+            if session.get("status") != "ok":
+                return None
+            surface_id = session.get("active_surface_id")
+            if not surface_id:
+                return None
+            hydrated = await self._toolbox.call("hydrate_ui", {"surface_id": surface_id})
+        except Exception:
+            return None
+        if hydrated.get("status") != "ok":
+            return None
+        return {
+            "status": "ok",
+            "surface_id": surface_id,
+            "a2ui": hydrated.get("a2ui", []),
+            "catalog_id": hydrated.get("catalog_id"),
+            "audio_ref": hydrated.get("audio_ref"),
+            "assistant_text": "Modo demo: reutilizando la última interfaz generada.",
         }
 
     async def _trace(self, started: float, *, error: str | None) -> None:

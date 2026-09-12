@@ -74,6 +74,43 @@ def _descriptor(
     return descriptor
 
 
+async def _render(
+    database: DatabasePort, row: dict[str, Any], descriptor: dict[str, Any]
+) -> dict[str, Any]:
+    """Shared hydration core: fresh data, placeholders, and structural revalidation."""
+    user_id = descriptor.get("user_id") or row["user_id"]
+    stored = json.loads(row["template_json"])
+    domain = descriptor.get("domain") or row["domain"]
+    context = await finance_service.financial_context(database, user_id)
+    savings = None
+    if domain == "saving_bag":
+        bag_id = descriptor.get("entity_id") or row["entity_id"]
+        savings = await savings_service.savings_snapshot(database, bag_id) if bag_id else None
+        context["savings"] = savings
+
+    audio_ref = ""
+    if descriptor.get("accessible"):
+        spoken = str(descriptor.get("speech") or "")
+        speech_payload: dict[str, Any] = {"text": spoken}
+        if spoken:
+            digest = speech_hash(
+                spoken, descriptor.get("voice_id", ""), descriptor.get("speed", 1.0)
+            )
+            asset = await database.fetch_one(
+                "SELECT id FROM audio_assets WHERE text_hash = ? ORDER BY created_at DESC LIMIT 1",
+                (digest,),
+            )
+            if asset is not None:
+                audio_ref = f"/api/audio/{asset['id']}"
+                speech_payload["audioRef"] = audio_ref
+        context["speech"] = speech_payload
+
+    components = hydrate_components(
+        stored, context, simulation=descriptor.get("simulation"), savings=savings
+    )
+    return {"components": components, "context": context, "audio_ref": audio_ref}
+
+
 async def persist_ui(
     database: DatabasePort,
     *,
@@ -132,6 +169,36 @@ async def persist_ui(
             now,
         ),
     )
+    rendered = await _render(
+        database,
+        {
+            "id": surface_id,
+            "user_id": user_id,
+            "domain": domain,
+            "entity_id": entity_id or None,
+            "catalog_id": pinned_catalog,
+            "template_json": json.dumps(components, ensure_ascii=False),
+            "bindings_json": json.dumps(descriptor, ensure_ascii=False),
+            "version": 1,
+        },
+        descriptor,
+    )
+    await database.execute(
+        "UPDATE generated_ui SET frozen_json = ? WHERE id = ?",
+        (
+            json.dumps(
+                {
+                    "catalog_id": pinned_catalog,
+                    "components": rendered["components"],
+                    "data_model": rendered["context"],
+                    "audio_ref": rendered["audio_ref"],
+                    "version": 1,
+                },
+                ensure_ascii=False,
+            ),
+            surface_id,
+        ),
+    )
     return {
         "status": "ok",
         "surface_id": surface_id,
@@ -162,36 +229,9 @@ async def hydrate_ui(database: DatabasePort, surface_id: str) -> dict[str, Any]:
         return {"status": "error", "issues": [f"unknown surface {surface_id!r}"]}
 
     descriptor = json.loads(row["bindings_json"] or "{}")
-    user_id = descriptor.get("user_id") or row["user_id"]
     stored = json.loads(row["template_json"])
-    domain = descriptor.get("domain") or row["domain"]
-    context = await finance_service.financial_context(database, user_id)
-    savings = None
-    if domain == "saving_bag":
-        bag_id = descriptor.get("entity_id") or row["entity_id"]
-        savings = await savings_service.savings_snapshot(database, bag_id) if bag_id else None
-        context["savings"] = savings
-
-    audio_ref = ""
-    if descriptor.get("accessible"):
-        spoken = str(descriptor.get("speech") or "")
-        speech_payload: dict[str, Any] = {"text": spoken}
-        if spoken:
-            digest = speech_hash(
-                spoken, descriptor.get("voice_id", ""), descriptor.get("speed", 1.0)
-            )
-            asset = await database.fetch_one(
-                "SELECT id FROM audio_assets WHERE text_hash = ? ORDER BY created_at DESC LIMIT 1",
-                (digest,),
-            )
-            if asset is not None:
-                audio_ref = f"/api/audio/{asset['id']}"
-                speech_payload["audioRef"] = audio_ref
-        context["speech"] = speech_payload
-
-    components = hydrate_components(
-        stored, context, simulation=descriptor.get("simulation"), savings=savings
-    )
+    rendered = await _render(database, row, descriptor)
+    components = rendered["components"]
 
     version = row["version"]
     if json.dumps(components, sort_keys=True) != json.dumps(stored, sort_keys=True):
@@ -206,11 +246,38 @@ async def hydrate_ui(database: DatabasePort, surface_id: str) -> dict[str, Any]:
         "surface_id": surface_id,
         "version": version,
         "catalog_id": row["catalog_id"],
-        "audio_ref": audio_ref,
+        "audio_ref": rendered["audio_ref"],
         "a2ui": [
             {"version": _VERSION, "createSurface": {"surfaceId": surface_id, "catalogId": row["catalog_id"]}},
             {"version": _VERSION, "updateComponents": {"surfaceId": surface_id, "components": components}},
-            {"version": _VERSION, "updateDataModel": {"surfaceId": surface_id, "path": "/", "value": context}},
+            {"version": _VERSION, "updateDataModel": {"surfaceId": surface_id, "path": "/", "value": rendered["context"]}},
+        ],
+    }
+
+
+async def kill_test(database: DatabasePort, surface_id: str) -> dict[str, Any]:
+    """Serve the genuine frozen artifact with no agent and no live recompute (REQ-KT-01/02)."""
+    row = await database.fetch_one(
+        "SELECT id, catalog_id, version, frozen_json FROM generated_ui WHERE id = ?",
+        (surface_id,),
+    )
+    if row is None:
+        return {"status": "error", "issues": [f"unknown surface {surface_id!r}"]}
+    if not row["frozen_json"]:
+        return {"status": "error", "issues": [f"surface {surface_id!r} has no frozen artifact"]}
+
+    frozen = json.loads(row["frozen_json"])
+    catalog_id = frozen.get("catalog_id") or row["catalog_id"]
+    return {
+        "status": "ok",
+        "surface_id": surface_id,
+        "catalog_id": catalog_id,
+        "version": frozen.get("version", row["version"]),
+        "audio_ref": frozen.get("audio_ref", ""),
+        "a2ui": [
+            {"version": _VERSION, "createSurface": {"surfaceId": surface_id, "catalogId": catalog_id}},
+            {"version": _VERSION, "updateComponents": {"surfaceId": surface_id, "components": frozen.get("components", [])}},
+            {"version": _VERSION, "updateDataModel": {"surfaceId": surface_id, "path": "/", "value": frozen.get("data_model", {})}},
         ],
     }
 

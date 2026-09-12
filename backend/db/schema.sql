@@ -121,6 +121,7 @@ CREATE TABLE IF NOT EXISTS generated_ui (
     bindings_json TEXT NOT NULL DEFAULT '{}',
     version INTEGER NOT NULL DEFAULT 1,
     audience TEXT NOT NULL DEFAULT 'user',
+    frozen_json TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );

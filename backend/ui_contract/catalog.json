@@ -185,6 +185,16 @@
         "target": "dynamicNumber",
         "action": "action"
       }
+    },
+    "AssumptionChip": {
+      "required": ["label", "value"],
+      "props": {
+        "label": "string",
+        "value": "dynamic",
+        "editable": "boolean",
+        "path": "string",
+        "action": "action"
+      }
     }
   }
 }

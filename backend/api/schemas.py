@@ -53,6 +53,8 @@ class UiResponse(BaseModel):
     surface_id: str
     a2ui: list[dict[str, Any]] = Field(default_factory=list)
     issues: list[str] = Field(default_factory=list)
+    catalog_id: str | None = None
+    audio_ref: str | None = None
 
 
 class TraceResponse(BaseModel):

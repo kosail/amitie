@@ -51,13 +51,13 @@
 
 ## 5. Caja de Cristal (transparency)
 
-- [ ] **REQ-CC-01** — Generated financial surfaces can include a "why you are seeing this" panel that exposes the assumptions and data used.
-- [ ] **REQ-CC-02** — At least one assumption is editable by the user; editing it causes the agent to rebuild the outcome.
+- [x] **REQ-CC-01** — Generated financial surfaces can include a "why you are seeing this" panel that exposes the assumptions and data used.
+- [x] **REQ-CC-02** — At least one assumption is editable by the user; editing it causes the agent to rebuild the outcome.
 
 ## 6. Kill Test (proof)
 
-- [ ] **REQ-KT-01** — A debug endpoint serves a persisted, hydrated UI with frozen data and no agent involvement.
-- [ ] **REQ-KT-02** — The Kill Test output must be the genuine stored artifact, never re-generated or staged.
+- [x] **REQ-KT-01** — A debug endpoint serves a persisted, hydrated UI with frozen data and no agent involvement.
+- [x] **REQ-KT-02** — The Kill Test output must be the genuine stored artifact, never re-generated or staged.
 
 ## 7. UI persistence & hydration
 
@@ -90,8 +90,8 @@
 - [x] **REQ-NFR-01** — Provider failover works without code changes and keeps development/demo alive on quota exhaustion (Gemini→DeepSeek, ElevenLabs→edge-tts, Gemini STT→faster-whisper, grounding→fallback table).
 - [ ] **REQ-NFR-02** — Every request and every LLM/MCP call is traceable by `trace_id`.
 - [ ] **REQ-NFR-03** — Modules can be built, run, and tested independently (isolated MCP servers; pure engine and hydration modules).
-- [ ] **REQ-NFR-04** — `DEMO_MODE` pins the system to seeded data and cached responses if any provider degrades.
-- [ ] **REQ-NFR-05** — The golden path completes in approximately 90 seconds.
+- [x] **REQ-NFR-04** — `DEMO_MODE` pins the system to seeded data and cached responses if any provider degrades.
+- [x] **REQ-NFR-05** — The golden path completes in approximately 90 seconds.
 - [ ] **REQ-NFR-06** — The backend is reachable over the internet through a Cloudflare Tunnel while all execution and data remain local.
 
 ## 11. Demo

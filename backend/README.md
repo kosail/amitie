@@ -141,12 +141,13 @@ backend/
     schema_registry.py      referencing.Registry over the vendored A2UI schemas
     schemas/0.9/            vendored A2UI server_to_client.json + common_types.json
 
-  hydration/                Data hydration (implemented; M3.2/M4/M6/M7)
+  hydration/                Data hydration (implemented; M3.2/M4/M6/M7/M8)
     placeholders.py         Pure {{path}} resolve()/collect()
-    service.py              revalidate(): plan-section + BreakAlert (M4), savings-section (M6)
+    service.py              revalidate(): plan-section (M4), savings-section (M6), assumptions (M8)
     speech.py               Pure speech-text extraction for accessible surfaces (M7)
+    assumptions.py          Caja de Cristal panel (editable AssumptionChips) (M8)
 
-  mcp_servers/              In-process MCP servers (implemented; M3.2/M6/M7)
+  mcp_servers/              In-process MCP servers (implemented; M3.2/M6/M7/M8)
     toolbox.py              Toolbox over in-memory mcp.Client + result normalization
     finance/                get_profile, get_liabilities, get_income_streams,
                             get_subscriptions, get_cash_flow, get_financial_context,
@@ -155,9 +156,9 @@ backend/
     savings/                create_bag, get_bag, list_bags, answer_bag, research_costs,
                             estimate_total, compute_feasibility, refresh_bag,
                             get_savings_snapshot
-    ui/                     persist_ui (accessible catalog pin + speech), hydrate_ui,
-                            a2ui_action, record_negotiation_round, get_negotiation,
-                            get_session, set_session_context
+    ui/                     persist_ui (accessible catalog pin + speech + freeze),
+                            hydrate_ui, kill_test, a2ui_action, record_negotiation_round,
+                            get_negotiation, get_session, set_session_context
     voice/                  synthesize_speech (cached), transcribe_audio, get_audio
 
   audio_cache/              Cached TTS assets (git-ignored; .gitkeep tracked)
@@ -212,9 +213,12 @@ backend/
     test_catalog_voz_color.py  Accessible catalog registry + validation
     test_accessibility.py   Catalog pinning + speech derivation/hydration
     test_m7_acceptance.py   M7 acceptance: accessible catalog + audio in/out + contrast
+    test_assumptions.py     Caja de Cristal panel + editable assumption
+    test_kill_test.py       Frozen artifact survives live DB changes
+    test_demo_mode.py       DEMO_MODE re-serves the last surface on provider failure
+    test_demo_golden_path.py  Full journey ordering + <90s budget
 
-  # Planned directories (not created yet):
-  # demo/         DEMO_MODE, golden-path seed, rehearsal harness
+  demo/                     Golden-path rehearsal runner (`python -m demo.golden_path`)
 ```
 
 Root documents (one level up): `AGENTS.md`, `INVARIANTS.md`, `SPECS.md`,
@@ -239,7 +243,7 @@ python -m pip install -r requirements.txt
 # 3. Create and seed the local database  ->  ./data/amitie.sqlite3
 python -m db.init
 
-# 4. Run the test suite (132 tests expected to pass)
+# 4. Run the test suite (139 tests expected to pass)
 python -m unittest discover -s tests -t . -v
 ```
 
@@ -261,7 +265,8 @@ Endpoints: `POST /api/session`, `POST /api/message`, `POST /api/action`,
 `GET /api/saving-bags[/{id}]`, `POST /api/saving-bags/{id}/answer`,
 `POST /api/saving-bags/{id}/refresh`), El Revés
 (`POST /api/negotiation/{session_id}/turn`, `.../take-control`),
-`GET /api/audio/{asset_id}`, `GET /debug/trace/{trace_id}`, `GET /healthz`.
+`GET /api/audio/{asset_id}`, `GET /debug/trace/{trace_id}`,
+`GET /debug/kill-test/{surface_id}`, `GET /healthz`.
 
 `POST /api/message` accepts `text` or `audio_b64`; audio is transcribed through
 the `voice` MCP before the agent interprets it (REQ-ACC-04).
@@ -276,7 +281,7 @@ must never be committed (`INV-040`).
 | Variable | Purpose |
 |---|---|
 | `DATABASE_PATH` | SQLite file path (default `./data/amitie.sqlite3`) |
-| `DEMO_MODE` | Pins the system to seeded data / cached responses |
+| `DEMO_MODE` | Graceful degradation: re-serve the last generated surface on provider failure (default on) |
 | `LOG_LEVEL` | Log verbosity |
 | `AGENT_MAX_MODEL_CALLS` | Per-turn model-call budget (default 6) |
 | `GEMINI_API_KEY` | Primary LLM (and STT / research grounding) |
@@ -302,16 +307,18 @@ code edits (`INV-013`).
 
 ## 7. Current status
 
-**Milestones 1–2 and all of M3–M7 are complete.** Persistence, deterministic
+**Milestones 1–2 and all of M3–M8 are complete.** Persistence, deterministic
 engines, observability, the LLM provider layer with failover, the A2UI contract
 and SDK-schema validation, in-process MCP servers, hydration, the ADK agent, the
 FastAPI HTTP API, the La Mesa mutations (`simulate_plan`, proactive `BreakAlert`,
 repair, deterministic revalidation), El Revés (bank/advocate personas,
 take-control, simulated acceptance), Saving Bags (goal creation, inferred
 question forms, grounded research with fallback, deterministic estimate +
-feasibility, domain-aware hydration, loan handoff), and Voz y Color (automatic
+feasibility, domain-aware hydration, loan handoff), Voz y Color (automatic
 accessible catalog, speech payloads, cached TTS, STT input, standard/accessible
-contrast) are implemented and covered by tests.
+contrast), Caja de Cristal (editable assumption panel), the Kill Test (frozen
+no-agent artifact), and `DEMO_MODE` graceful degradation are implemented and
+covered by tests.
 
 | Layer | Status |
 |---|---|
@@ -335,12 +342,16 @@ contrast) are implemented and covered by tests.
 | El Revés negotiation (M5) | ✅ Implemented, tested |
 | Saving Bags — research, estimate, plan, loan handoff (M6) | ✅ Implemented, tested |
 | Voz y Color — accessible catalog, speech, TTS/STT (M7) | ✅ Implemented, tested |
-| Caja de Cristal + Kill Test + DEMO_MODE | ⏳ Planned (M8) |
+| Caja de Cristal — editable assumptions (M8) | ✅ Implemented, tested |
+| Kill Test — frozen artifact, no agent (M8) | ✅ Implemented, tested |
+| DEMO_MODE graceful degradation + golden-path test (M8) | ✅ Implemented, tested |
 
-**Test suite:** 132 tests, all passing.
+**Test suite:** 139 tests, all passing.
 
 ### Roadmap
-1. **M8** — Caja de Cristal, Kill Test, `DEMO_MODE`, golden-path rehearsal.
+- Backend milestones complete. Remaining demo work is operational: golden-path
+  rehearsal (`python -m demo.golden_path`), Cloudflare Tunnel (`cloudflared`),
+  and the recorded video fallback (`REQ-DEMO-04`).
 
 ---
 

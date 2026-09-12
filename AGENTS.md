@@ -81,23 +81,23 @@ Root documents: `AGENTS.md`, `INVARIANTS.md`, `SPECS.md`, `CHANGELOG.md`, and `A
 
 ```
 /backend
-  api/            FastAPI app factory, lifespan, DI, routers (session, message, action, ui, debug)
-  agent/          ADK orchestrator: model.py (GatewayLlm), tools.py (MCP->ADK), service.py, negotiation.py (El Reves)
+  api/            FastAPI app factory, lifespan, DI, routers (session, message, action, ui, negotiation, saving_bags, audio, debug)
+  agent/          ADK orchestrator: model.py (GatewayLlm), tools.py (MCP->ADK), service.py, negotiation.py (El Reves), speech.py
   providers/      base interfaces + gemini, deepseek, research (grounding + static), voice (TTS/STT), registry
-  ui_contract/    catalog.json + catalog.schema.json + prompt.py + validator.py + vendored A2UI schemas
+  ui_contract/    catalog.json + voz_color.json + *.schema.json + prompt.py + validator.py + vendored A2UI schemas
   mcp_servers/    in-process MCP servers (named to avoid shadowing the `mcp` SDK)
     finance/      liabilities, income, subscriptions, cash flow, context, offers
     savings/      saving bags: create, answers, research snapshots, feasibility
-    ui/           persist, hydrate, a2ui_action, negotiation rounds + session context
+    ui/           persist (+ freeze), hydrate, kill_test, a2ui_action, negotiation rounds + session context
     voice/        TTS synthesis (cached) + STT transcription
     toolbox.py    Toolbox over in-memory mcp.Client + result normalization
   engine/         deterministic amortization, break detection, feasibility, planning adapter (pure, tested)
-  hydration/      placeholder resolver + revalidation hook (pure, tested)
-  db/             port.py, local_sqlite.py, schema.sql, schema.py, seed.py, sql_utils.py, init.py
+  hydration/      placeholder resolver + revalidation (plan/savings/assumptions/speech) (pure, tested)
+  db/             port.py, local_sqlite.py, schema.sql, schema.py (idempotent column migration), seed.py, sql_utils.py, init.py
   tests/          persistence, engine, observability, provider, and A2UI contract tests
   observability/  trace middleware, structured logging, /debug/trace
   audio_cache/    pre-warmed TTS assets
-  demo/           DEMO_MODE, golden-path seed, rehearsal harness
+  demo/           golden-path rehearsal runner
   .env.example    template only; real .env is git-ignored
 ```
 

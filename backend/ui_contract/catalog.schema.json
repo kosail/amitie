@@ -40,7 +40,8 @@
         { "$ref": "#/components/ProgressBar" },
         { "$ref": "#/components/TextField" },
         { "$ref": "#/components/CashFlowTimeline" },
-        { "$ref": "#/components/GoalJar" }
+        { "$ref": "#/components/GoalJar" },
+        { "$ref": "#/components/AssumptionChip" }
       ]
     }
   },
@@ -459,6 +460,26 @@
             "action": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/Action" }
           },
           "required": ["component", "label", "current", "target"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "AssumptionChip": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "AssumptionChip" },
+            "label": { "type": "string" },
+            "value": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicValue" },
+            "editable": { "type": "boolean" },
+            "path": { "type": "string" },
+            "action": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/Action" }
+          },
+          "required": ["component", "label", "value"]
         }
       ],
       "unevaluatedProperties": false

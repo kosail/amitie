@@ -13,6 +13,7 @@ from typing import Any, Mapping
 
 from engine import planning
 
+from . import assumptions as assumptions_builder
 from .placeholders import resolve_placeholders
 
 PLAN_SECTION_ID = "plan-section"
@@ -114,20 +115,66 @@ def _apply_plan_section(components: list[dict[str, Any]], plan: Mapping[str, Any
         root["children"] = children
 
 
+def _apply_assumptions_section(
+    components: list[dict[str, Any]],
+    context: dict[str, Any],
+    *,
+    simulation: Mapping[str, Any] | None = None,
+    savings: Mapping[str, Any] | None = None,
+) -> None:
+    for index in range(len(components) - 1, -1, -1):
+        component_id = components[index].get("id")
+        if component_id == assumptions_builder.SECTION_ID or (
+            isinstance(component_id, str) and component_id.startswith("assumption-")
+        ):
+            components.pop(index)
+
+    injected = assumptions_builder.build_assumption_components(
+        context, simulation=simulation, savings=savings
+    )
+    if not injected:
+        return
+    components.extend(injected)
+
+    root = _root_column(components)
+    if root is not None:
+        children = root.get("children")
+        if not isinstance(children, list):
+            children = []
+        if assumptions_builder.SECTION_ID not in children:
+            children.append(assumptions_builder.SECTION_ID)
+        root["children"] = children
+
+
 def revalidate(
     template: Any,
     context: dict[str, Any],
     *,
     simulation: Mapping[str, Any] | None = None,
+    savings: Mapping[str, Any] | None = None,
 ) -> Any:
-    if not simulation:
-        return template
-    plan = planning.build_plan(context, simulation)
-    context["plan"] = plan
+    if simulation:
+        plan = planning.build_plan(context, simulation)
+        context["plan"] = plan
     if not isinstance(template, list):
         return template
     components = copy.deepcopy(template)
-    _apply_plan_section(components, plan)
+    if context.get("plan") is not None:
+        _apply_plan_section(components, context["plan"])
+    return components
+
+
+def revalidate_assumptions(
+    template: Any,
+    context: dict[str, Any],
+    *,
+    simulation: Mapping[str, Any] | None = None,
+    savings: Mapping[str, Any] | None = None,
+) -> Any:
+    if not isinstance(template, list):
+        return template
+    components = copy.deepcopy(template)
+    _apply_assumptions_section(components, context, simulation=simulation, savings=savings)
     return components
 
 
@@ -198,6 +245,9 @@ def hydrate_components(
     savings: Mapping[str, Any] | None = None,
 ) -> Any:
     resolved = resolve_placeholders(template, context)
-    resolved = revalidate(resolved, context, simulation=simulation)
+    resolved = revalidate(resolved, context, simulation=simulation, savings=savings)
     resolved = revalidate_savings(resolved, savings)
+    resolved = revalidate_assumptions(
+        resolved, context, simulation=simulation, savings=savings
+    )
     return resolved

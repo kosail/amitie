@@ -29,6 +29,7 @@ SHIPPED_SUBSET = {
     "TextField",
     "CashFlowTimeline",
     "GoalJar",
+    "AssumptionChip",
 }
 
 VALID_PAYLOAD = [
