@@ -42,6 +42,14 @@ class FallbackLLM:
         return f"{self._primary.name}->{self._fallback.name}"
 
     @property
+    def primary(self) -> LLMProvider:
+        return self._primary
+
+    @property
+    def fallback(self) -> LLMProvider:
+        return self._fallback
+
+    @property
     def model(self) -> str:
         return self._primary.model
 

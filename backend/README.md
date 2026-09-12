@@ -216,9 +216,11 @@ backend/
     test_assumptions.py     Caja de Cristal panel + editable assumption
     test_kill_test.py       Frozen artifact survives live DB changes
     test_provider_failure.py  Provider failure returns a clear, retryable error (no stale surface)
+    test_provider_doctor.py Provider health probes (/debug/providers)
     test_demo_golden_path.py  Full journey ordering + <90s budget
 
-  demo/                     Golden-path rehearsal runner (`python -m demo.golden_path`)
+  demo/                     Golden-path rehearsal runner + provider doctor
+                            (`python -m demo.golden_path`; probes providers first)
 ```
 
 Root documents (one level up): `AGENTS.md`, `INVARIANTS.md`, `SPECS.md`,
@@ -243,7 +245,7 @@ python -m pip install -r requirements.txt
 # 3. Create and seed the local database  ->  ./data/amitie.sqlite3
 python -m db.init
 
-# 4. Run the test suite (142 tests expected to pass)
+# 4. Run the test suite (146 tests expected to pass)
 python -m unittest discover -s tests -t . -v
 ```
 
@@ -266,7 +268,11 @@ Endpoints: `POST /api/session`, `POST /api/message`, `POST /api/action`,
 `POST /api/saving-bags/{id}/refresh`), El Revés
 (`POST /api/negotiation/{session_id}/turn`, `.../take-control`),
 `GET /api/audio/{asset_id}`, `GET /debug/trace/{trace_id}`,
-`GET /debug/kill-test/{surface_id}`, `GET /healthz`.
+`GET /debug/kill-test/{surface_id}`, `GET /debug/providers`, `GET /healthz`.
+
+Diagnose integration failures before a rehearsal with `GET /debug/providers`: it
+probes the LLM primary/fallback, research grounding, and TTS with minimal real
+calls and returns per-provider `ok`/latency/error.
 
 `POST /api/message` accepts `text` or `audio_b64`; audio is transcribed through
 the `voice` MCP before the agent interprets it (REQ-ACC-04).
@@ -345,7 +351,7 @@ are implemented and covered by tests.
 | Kill Test — frozen artifact, no agent (M8) | ✅ Implemented, tested |
 | Provider-failure error contract (`error_code`/`retryable`) + golden-path test (M8) | ✅ Implemented, tested |
 
-**Test suite:** 142 tests, all passing.
+**Test suite:** 146 tests, all passing.
 
 ### Roadmap
 - Backend milestones complete. Remaining demo work is operational: golden-path

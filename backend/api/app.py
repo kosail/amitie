@@ -80,6 +80,7 @@ def create_app(
         app.state.database = database
         app.state.tracer = tracer
         app.state.toolbox = toolbox
+        app.state.llm = llm
         app.state.research = research_provider
         app.state.tts = tts_provider
         app.state.stt = stt_provider

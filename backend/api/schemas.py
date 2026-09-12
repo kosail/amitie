@@ -64,6 +64,21 @@ class TraceResponse(BaseModel):
     events: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class ProviderHealth(BaseModel):
+    name: str
+    provider: str | None = None
+    model: str | None = None
+    ok: bool | None = None
+    latency_ms: int | None = None
+    detail: str | None = None
+    error: str | None = None
+
+
+class ProvidersResponse(BaseModel):
+    status: str
+    providers: list[ProviderHealth] = Field(default_factory=list)
+
+
 class SavingBagCreateRequest(BaseModel):
     user_id: str = "u_ana"
     name: str
