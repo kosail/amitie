@@ -20,7 +20,6 @@ from config import Settings, load_dotenv
 from db.local_sqlite import LocalSQLiteDatabase
 from db.schema import apply_schema
 from mcp_servers.finance.server import build_finance_server
-from mcp_servers.savings.server import build_savings_server
 from mcp_servers.toolbox import InProcessToolbox
 from mcp_servers.ui.server import build_ui_server
 from mcp_servers.voice.server import build_voice_server
@@ -47,7 +46,6 @@ from .routers import (
     loans,
     message,
     negotiation,
-    saving_bags,
     session,
     ui,
     voice,
@@ -83,8 +81,7 @@ def create_app(
         )
         toolbox = InProcessToolbox(
             {
-                "finance": build_finance_server(database),
-                "savings": build_savings_server(database, research_provider),
+                "finance": build_finance_server(database, resolved),
                 "ui": build_ui_server(database),
                 "voice": build_voice_server(
                     database,
@@ -139,7 +136,6 @@ def create_app(
     app.include_router(message.router)
     app.include_router(action.router)
     app.include_router(negotiation.router)
-    app.include_router(saving_bags.router)
     app.include_router(finance.router)
     app.include_router(ui.router)
     app.include_router(audio.router)

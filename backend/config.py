@@ -88,6 +88,13 @@ class Settings:
     piper_voice: str = "es_MX-claude-high"
     voices_dir: str = "./voices"
 
+    # Loan offer defaults (LOANS_CONSULT_GUIDE.md; amount derived by the framework).
+    loan_default_apr: float = 0.24
+    loan_default_term_months: int = 24
+    loan_opening_fee_pct: float = 0.02
+    loan_insurance_fee_pct: float = 0.01
+    loan_dti_cap: float = 0.35
+
     agent_max_model_calls: int = 10
 
     @classmethod
@@ -124,5 +131,10 @@ class Settings:
             pr_switch=_as_bool("PR_SWITCH", "0"),
             piper_voice=os.environ.get("PIPER_VOICE", "es_MX-claude-high").strip(),
             voices_dir=os.environ.get("VOICES_DIR", "./voices").strip(),
+            loan_default_apr=_as_float("LOAN_DEFAULT_APR", "0.24"),
+            loan_default_term_months=_as_int("LOAN_DEFAULT_TERM_MONTHS", "24"),
+            loan_opening_fee_pct=_as_float("LOAN_OPENING_FEE_PCT", "0.02"),
+            loan_insurance_fee_pct=_as_float("LOAN_INSURANCE_FEE_PCT", "0.01"),
+            loan_dti_cap=_as_float("LOAN_DTI_CAP", "0.35"),
             agent_max_model_calls=_as_int("AGENT_MAX_MODEL_CALLS", "10"),
         )

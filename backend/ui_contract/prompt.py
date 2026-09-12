@@ -32,7 +32,7 @@ def build_system_prompt(
             "DATA BINDING: a prop value may be a literal or a JSON-Pointer binding of the form "
             '{"path": "/liabilities/0/balance"}. Bindings resolve against the surface data model, '
             "whose root keys are: profile, liabilities, totals, incomeStreams, subscriptions, "
-            "subscriptionTotal, cashFlow, plan, savings, speech. Prefer bindings over hard-coded "
+            "subscriptionTotal, cashFlow, plan, speech. Prefer bindings over hard-coded "
             "financial values.",
             "COMPONENT SHAPE (v0.9, flat): each component is an object with a STRING type and "
             'sibling props, e.g. {"id": "title", "component": "Heading", "text": "Hola", '

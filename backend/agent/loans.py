@@ -65,6 +65,90 @@ def _parse_json(text: str) -> dict[str, Any]:
     return parsed
 
 
+def _extract_amount(text: str) -> float | None:
+    """Best-effort deterministic amount from the user's message (digits, mil/k)."""
+    if not text:
+        return None
+    best: float | None = None
+    for match in re.finditer(r"(\d+(?:[.,]\d+)?)\s*(mil|k)?", text.lower().replace(",", "")):
+        value = float(match.group(1))
+        if match.group(2):
+            value *= 1000
+        if value >= 1000:
+            best = value if best is None else max(best, value)
+    return best
+
+
+def _lookup_pointer(model: Any, path: str) -> Any:
+    node = model
+    for part in path.strip("/").split("/"):
+        if part == "":
+            continue
+        if isinstance(node, list):
+            try:
+                node = node[int(part)]
+            except (ValueError, IndexError):
+                return None
+        elif isinstance(node, dict):
+            node = node.get(part)
+        else:
+            return None
+        if node is None:
+            return None
+    return node
+
+
+def resolve_loan_bindings(a2ui: Any, data_model: Any) -> Any:
+    """Replace `/loan/...` bindings with resolved values so LoanOffer carries a numeric amount."""
+
+    def visit(node: Any) -> Any:
+        if isinstance(node, dict):
+            path = node.get("path")
+            if set(node.keys()) == {"path"} and isinstance(path, str) and path.startswith("/loan/"):
+                value = _lookup_pointer(data_model, path)
+                return node if value is None else value
+            return {key: visit(value) for key, value in node.items()}
+        if isinstance(node, list):
+            return [visit(item) for item in node]
+        return node
+
+    resolved = []
+    for message in a2ui or []:
+        if isinstance(message, dict) and "updateComponents" in message:
+            body = message["updateComponents"]
+            resolved.append(
+                {
+                    **message,
+                    "updateComponents": {
+                        **body,
+                        "components": [visit(c) for c in body.get("components", [])],
+                    },
+                }
+            )
+        else:
+            resolved.append(message)
+    return resolved
+
+
+def _has_valid_loan_offer(a2ui: Any) -> bool:
+    for message in a2ui or []:
+        if not isinstance(message, dict) or "updateComponents" not in message:
+            continue
+        for component in message["updateComponents"].get("components", []):
+            if not isinstance(component, dict) or component.get("component") != "LoanOffer":
+                continue
+            amount = component.get("amount")
+            if isinstance(amount, (int, float)) and not isinstance(amount, bool) and amount > 0:
+                return True
+            if (
+                isinstance(amount, dict)
+                and isinstance(amount.get("path"), str)
+                and amount["path"].startswith("/loan/")
+            ):
+                return True
+    return False
+
+
 class LoansConsultService:
     def __init__(
         self,
@@ -91,7 +175,28 @@ class LoansConsultService:
                 "Si necesitas más información, pregunta y devuelve terminal_response = null.",
                 "Solo genera terminal_response cuando la confianza sea mayor a 0.80.",
                 "En los componentes usa placeholders {{dot.path}} para datos importantes "
-                "(por ejemplo {{loan.amount}}) y coloca sus valores en data_model.",
+                "(por ejemplo {{analysis.scenarios.1.interestSaved}}) y coloca sus valores en data_model.",
+                "",
+                "MANDATO DE VALOR (obligatorio). Recibirás un 'Analisis determinista' con cifras "
+                "reales del usuario. NO produzcas paneles genéricos:",
+                "- Incluye SIEMPRE el componente ScenarioComparison con el plan base y al menos un "
+                "plan acelerado, mostrando interés ahorrado y meses ahorrados.",
+                "- Di qué crédito atacar primero citando acreedor y tasa (highCost/nextBestAction).",
+                "- Propón una acción concreta con monto y efecto medido (nextBestAction).",
+                "- Menciona la carga de suscripciones y la presión por quincena cuando sean relevantes.",
+                "- Usa el pronóstico/orden de pago reales (payoffOrder) en PlanTable/ForecastChart/LineChart.",
+                "- Todos los datos deben derivarse del comportamiento y las tendencias del usuario; "
+                "prohibido inventar cifras o dar consejos genéricos.",
+                "- El response_text debe abrir con el hallazgo más importante y específico del usuario.",
+                "",
+                "OFERTA DE CRÉDITO (obligatoria en terminal_response): recibirás una 'OFERTA "
+                "DETERMINISTA' calculada por el motor. La interfaz DEBE incluir el componente "
+                "LoanOffer con amount, apr, months, monthlyPayment, totalInterest y cat, enlazados "
+                "con placeholders a /loan (por ejemplo {{loan.amount}}, {{loan.monthlyPayment}}, "
+                "{{loan.cat}}) y con action 'request_loan'; el backend ya colocó los valores en "
+                "data_model bajo 'loan' (incluye /loan/schedule). Añade un PlanTable/ForecastChart "
+                "con el calendario de pagos real y muestra las advertencias (warnings) del riesgo. "
+                "NUNCA inventes montos, tasas ni pagos: usa exactamente los de la OFERTA.",
                 "",
                 "Responde ÚNICAMENTE con un objeto JSON con esta forma:",
                 '{"response_text": "texto para hablar", "confidence": 0.0, '
@@ -118,11 +223,23 @@ class LoansConsultService:
             return None
         return result if result.get("status") == "ok" else None
 
+    async def _first_name(self, user_id: str) -> str | None:
+        try:
+            result = await self._toolbox.call("get_profile", {"user_id": user_id})
+        except Exception:
+            return None
+        name = ((result or {}).get("profile") or {}).get("name") or ""
+        parts = str(name).strip().split()
+        return parts[0] if parts else None
+
     async def greeting(self, *, user_id: str) -> dict[str, Any]:
-        audio = await self._synthesize(GREETING, user_id)
+        first = await self._first_name(user_id)
+        text = f"¿En qué te puedo ayudar hoy, {first}?" if first else GREETING
+        audio = await self._synthesize(text, user_id)
         return {
             "status": "ok",
-            "response_text": GREETING,
+            "response_text": text,
+            "audio_id": (audio or {}).get("audio_id"),
             "audio_ref": (audio or {}).get("audio_ref"),
             "terminal_response": None,
         }
@@ -137,6 +254,19 @@ class LoansConsultService:
     ) -> dict[str, Any]:
         started = time.perf_counter()
         context = await self._toolbox.call("get_credit_history", {"user_id": user_id})
+        analysis = await self._toolbox.call("analyze_loans", {"user_id": user_id})
+        requested_amount = _extract_amount(text)
+        offer = await self._toolbox.call(
+            "compute_loan_offer", {"user_id": user_id, "requested_amount": requested_amount or 0.0}
+        )
+        await self._toolbox.call(
+            "store_loan_offer",
+            {
+                "loan_request_id": loan_request_id,
+                "user_id": user_id,
+                "offer": offer.get("offer", offer),
+            },
+        )
         messages = [
             ChatMessage(role="system", content=self._system_prompt()),
             ChatMessage(
@@ -144,6 +274,11 @@ class LoansConsultService:
                 content=(
                     "Historial de crédito del usuario (JSON):\n"
                     + json.dumps(context.get("creditHistory", {}), ensure_ascii=False)
+                    + "\n\nAnalisis determinista (cifras reales; úsalas, no las inventes):\n"
+                    + json.dumps(analysis.get("analysis", {}), ensure_ascii=False)
+                    + "\n\nOFERTA DETERMINISTA (amount, apr, months, monthlyPayment, totalInterest, "
+                    "cat, schedule y riesgo; úsala tal cual en LoanOffer):\n"
+                    + json.dumps(offer, ensure_ascii=False)
                     + "\n\nConversación previa:\n"
                     + json.dumps(history or [], ensure_ascii=False)
                     + f"\n\nMensaje del usuario: {text}"
@@ -153,12 +288,14 @@ class LoansConsultService:
 
         parsed: dict[str, Any] | None = None
         error: str | None = None
+        valid = False
         for attempt in range(MAX_ATTEMPTS):
             try:
                 result = await self._provider.generate(messages, response_schema=LOANS_SCHEMA)
                 parsed = _parse_json(result.text)
                 validation = self._validate_terminal(parsed, loan_request_id)
                 if validation is None:
+                    valid = True
                     break
                 error = validation
                 messages = messages + [
@@ -174,7 +311,7 @@ class LoansConsultService:
                 error = f"{type(exc).__name__}: {exc}"
                 break
 
-        if parsed is None:
+        if parsed is None or not valid:
             await self._trace(started, error=error)
             return {
                 "status": "error",
@@ -189,6 +326,16 @@ class LoansConsultService:
 
         terminal_payload: dict[str, Any] | None = None
         if terminal and confidence > CONFIDENCE_THRESHOLD:
+            result = offer.get("offer", offer) if isinstance(offer, dict) else {}
+            terms = result.get("offer", {}) if isinstance(result, dict) else {}
+            terminal.setdefault("data_model", {})
+            if isinstance(terminal["data_model"], dict):
+                terminal["data_model"]["loan"] = {
+                    **terms,
+                    "schedule": result.get("schedule", []) if isinstance(result, dict) else [],
+                    "risk": result.get("risk", {}) if isinstance(result, dict) else {},
+                    "warnings": result.get("warnings", []) if isinstance(result, dict) else [],
+                }
             persisted = await self._persist_terminal(terminal, user_id, loan_request_id)
             if persisted is not None:
                 terminal_payload = persisted
@@ -200,6 +347,7 @@ class LoansConsultService:
             "loan_request_id": loan_request_id,
             "response_text": response_text,
             "confidence": confidence,
+            "audio_id": (audio or {}).get("audio_id"),
             "audio_ref": (audio or {}).get("audio_ref"),
             "terminal_response": terminal_payload,
         }
@@ -221,7 +369,16 @@ class LoansConsultService:
                 {"version": CATALOG.version, "updateComponents": {"surfaceId": "pending", "components": terminal["components"]}},
             ]
         )
-        return "; ".join(result.issues) if not result.ok else None
+        if not result.ok:
+            return "; ".join(result.issues)
+        types = {
+            component.get("component")
+            for component in terminal["components"]
+            if isinstance(component, dict)
+        }
+        if "LoanOffer" not in types:
+            return "terminal_response debe incluir el componente LoanOffer"
+        return None
 
     async def _persist_terminal(
         self, terminal: dict[str, Any], user_id: str, loan_request_id: str
@@ -240,10 +397,21 @@ class LoansConsultService:
         )
         if persisted.get("status") != "ok":
             return None
+        surface_id = persisted.get("surface_id")
+        hydrated = await self._toolbox.call("hydrate_ui", {"surface_id": surface_id})
+        a2ui = hydrated.get("a2ui", persisted.get("a2ui", []))
+        data_model: Any = {}
+        for message in a2ui:
+            if isinstance(message, dict) and "updateDataModel" in message:
+                data_model = message["updateDataModel"].get("value") or {}
+                break
+        a2ui = resolve_loan_bindings(a2ui, data_model)
+        if not _has_valid_loan_offer(a2ui):
+            return None
         return {
             "catalog_id": persisted.get("catalog_id"),
-            "surface_id": persisted.get("surface_id"),
-            "a2ui": persisted.get("a2ui", []),
+            "surface_id": surface_id,
+            "a2ui": a2ui,
         }
 
     async def _trace(self, started: float, *, error: str | None) -> None:

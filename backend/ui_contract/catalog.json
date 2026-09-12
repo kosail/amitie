@@ -16,7 +16,8 @@
     "take_control",
     "accept_offer",
     "refresh_bag",
-    "adjust_goal"
+    "adjust_goal",
+    "request_loan"
   ],
   "components": {
     "Column": {
@@ -193,6 +194,51 @@
         "value": "dynamic",
         "editable": "boolean",
         "path": "string",
+        "action": "action"
+      }
+    },
+    "LineChart": {
+      "required": ["points"],
+      "props": {
+        "points": "any",
+        "title": "string",
+        "yLabel": "string"
+      }
+    },
+    "BarChart": {
+      "required": ["bars"],
+      "props": {
+        "bars": "any",
+        "title": "string"
+      }
+    },
+    "ForecastChart": {
+      "required": ["forecast"],
+      "props": {
+        "forecast": "any",
+        "actual": "any",
+        "title": "string"
+      }
+    },
+    "ScenarioComparison": {
+      "required": ["scenarios"],
+      "props": {
+        "scenarios": "any",
+        "highlightIndex": "number",
+        "title": "string"
+      }
+    },
+    "LoanOffer": {
+      "required": ["amount", "apr", "months", "monthlyPayment", "totalInterest", "cat"],
+      "props": {
+        "amount": "dynamicNumber",
+        "apr": "dynamicNumber",
+        "months": "dynamicNumber",
+        "monthlyPayment": "dynamicNumber",
+        "totalInterest": "dynamicNumber",
+        "totalCost": "dynamicNumber",
+        "cat": "dynamicNumber",
+        "schedule": "any",
         "action": "action"
       }
     }

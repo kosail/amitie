@@ -8,7 +8,7 @@ accumulates from `net monthly surplus` and can be pushed negative by one-off
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Mapping
 
 
@@ -37,6 +37,7 @@ class Plan:
     total_interest: float
     total_paid: float
     payoff_month: int | None
+    payoff_months: dict[str, int] = field(default_factory=dict)
 
 
 def monthly_rate(apr: float) -> float:
@@ -76,6 +77,7 @@ def simulate(
     total_paid = 0.0
     snapshots: list[MonthSnapshot] = []
     payoff_month: int | None = None
+    payoff_months: dict[str, int] = {}
 
     for month in range(1, horizon_months + 1):
         interest = 0.0
@@ -101,6 +103,8 @@ def simulate(
             pay = min(payments[liability.id], balances[liability.id])
             balances[liability.id] = round(max(balances[liability.id] - pay, 0.0), 2)
             debt_payment += pay
+            if balances[liability.id] <= 0.01 and liability.id not in payoff_months:
+                payoff_months[liability.id] = month
 
         expenses = monthly_expenses + events.get(month, 0.0)
         cash += monthly_income - expenses - debt_payment
@@ -127,4 +131,5 @@ def simulate(
         total_interest=round(total_interest, 2),
         total_paid=round(total_paid, 2),
         payoff_month=payoff_month,
+        payoff_months=payoff_months,
     )

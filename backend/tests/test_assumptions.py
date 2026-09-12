@@ -38,18 +38,6 @@ class AssumptionsPureTest(unittest.TestCase):
 
         self.assertFalse(_by_id(components, "assumption-monthlyIncome").get("editable"))
 
-    def test_savings_assumptions(self) -> None:
-        savings = {
-            "plan": {
-                "inputs": {"days": 10, "travelers": 2, "styleMultiplier": 0.8},
-                "monthlyCapacity": 3200.0,
-                "breakdown": {"contingency": 7008.0},
-            }
-        }
-        components = build_assumption_components({}, savings=savings)
-        self.assertTrue(_by_id(components, "assumption-days")["editable"])
-        self.assertEqual(_by_id(components, "assumption-monthlyCapacity")["value"], 3200.0)
-
     def test_no_assumptions_without_plan(self) -> None:
         self.assertEqual(build_assumption_components({}), [])
 

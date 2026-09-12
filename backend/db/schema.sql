@@ -77,7 +77,11 @@ CREATE TABLE IF NOT EXISTS liabilities (
     min_payment REAL NOT NULL,
     due_day INTEGER,
     nomina_discount REAL NOT NULL DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'active'
+    status TEXT NOT NULL DEFAULT 'active',
+    term_months INTEGER,
+    opening_fee REAL DEFAULT 0,
+    insurance_fee REAL DEFAULT 0,
+    cat REAL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS lender_policies (
@@ -133,6 +137,49 @@ CREATE TABLE IF NOT EXISTS loan_requests (
     context_json TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS loan_offers (
+    id TEXT PRIMARY KEY,
+    loan_request_id TEXT NOT NULL,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    amount REAL NOT NULL,
+    apr REAL NOT NULL,
+    term_months INTEGER NOT NULL,
+    opening_fee REAL NOT NULL DEFAULT 0,
+    insurance_fee REAL NOT NULL DEFAULT 0,
+    cat REAL NOT NULL DEFAULT 0,
+    monthly_payment REAL NOT NULL,
+    total_interest REAL NOT NULL DEFAULT 0,
+    total_cost REAL NOT NULL DEFAULT 0,
+    warnings_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS loans (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    loan_request_id TEXT,
+    amount REAL NOT NULL,
+    apr REAL NOT NULL,
+    term_months INTEGER NOT NULL,
+    opening_fee REAL NOT NULL DEFAULT 0,
+    insurance_fee REAL NOT NULL DEFAULT 0,
+    cat REAL NOT NULL DEFAULT 0,
+    monthly_payment REAL NOT NULL,
+    total_interest REAL NOT NULL DEFAULT 0,
+    total_cost REAL NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS payment_history (
+    id TEXT PRIMARY KEY,
+    liability_id TEXT NOT NULL REFERENCES liabilities(id),
+    due_date TEXT NOT NULL,
+    paid_date TEXT,
+    amount REAL NOT NULL,
+    status TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS generated_ui (
@@ -223,6 +270,9 @@ CREATE INDEX IF NOT EXISTS idx_liabilities_user ON liabilities(user_id);
 CREATE INDEX IF NOT EXISTS idx_saving_bags_user ON saving_bags(user_id);
 CREATE INDEX IF NOT EXISTS idx_generated_ui_user ON generated_ui(user_id);
 CREATE INDEX IF NOT EXISTS idx_loan_requests_user ON loan_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_loan_offers_request ON loan_offers(loan_request_id);
+CREATE INDEX IF NOT EXISTS idx_loans_user ON loans(user_id);
+CREATE INDEX IF NOT EXISTS idx_payment_history_liability ON payment_history(liability_id);
 CREATE INDEX IF NOT EXISTS idx_generated_ui_domain ON generated_ui(domain, entity_id);
 CREATE INDEX IF NOT EXISTS idx_ui_actions_surface ON ui_actions(surface_id);
 CREATE INDEX IF NOT EXISTS idx_negotiation_session ON negotiation_rounds(session_id);

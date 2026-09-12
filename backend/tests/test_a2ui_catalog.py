@@ -30,6 +30,11 @@ SHIPPED_SUBSET = {
     "CashFlowTimeline",
     "GoalJar",
     "AssumptionChip",
+    "LineChart",
+    "BarChart",
+    "ForecastChart",
+    "ScenarioComparison",
+    "LoanOffer",
 }
 
 VALID_PAYLOAD = [
@@ -109,6 +114,16 @@ class CatalogValidatorTest(unittest.TestCase):
     def test_valid_payload_passes(self) -> None:
         result = self.validator.validate(VALID_PAYLOAD)
         self.assertTrue(result.ok, result.issues)
+
+    def test_chart_components_validate(self) -> None:
+        for component in (
+            {"id": "c", "component": "LineChart", "points": [{"label": "m1", "value": 1}], "title": "Proyección"},
+            {"id": "c", "component": "BarChart", "bars": [{"label": "m1", "value": 1}]},
+            {"id": "c", "component": "ForecastChart", "forecast": [{"period": "m1", "value": 1}]},
+            {"id": "c", "component": "ScenarioComparison", "scenarios": [{"label": "Base", "monthlyPayment": 7850, "payoffMonths": 41, "totalInterest": 1}]},
+        ):
+            result = self.validator.validate(_with_component(component))
+            self.assertTrue(result.ok, (component["component"], result.issues))
 
     def test_unknown_component_rejected(self) -> None:
         result = self.validator.validate(_with_component({"id": "x", "component": "Bogus"}))

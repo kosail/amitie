@@ -18,7 +18,6 @@ from ui_contract.catalog import CATALOG_ID, VOZ_COLOR_ID
 from ui_contract.validator import validate_messages
 
 from ..finance import service as finance_service
-from ..savings import service as savings_service
 from ..voice.service import text_hash as speech_hash
 
 _VERSION = "v0.9"
@@ -90,11 +89,6 @@ async def _render(
     snapshot = descriptor.get("data_model")
     if isinstance(snapshot, dict) and snapshot:
         context = {**snapshot, **context}
-    savings = None
-    if domain == "saving_bag":
-        bag_id = descriptor.get("entity_id") or row["entity_id"]
-        savings = await savings_service.savings_snapshot(database, bag_id) if bag_id else None
-        context["savings"] = savings
 
     audio_ref = ""
     if descriptor.get("accessible"):
@@ -114,7 +108,7 @@ async def _render(
         context["speech"] = speech_payload
 
     components = hydrate_components(
-        stored, context, simulation=descriptor.get("simulation"), savings=savings
+        stored, context, simulation=descriptor.get("simulation")
     )
     return {"components": components, "context": context, "audio_ref": audio_ref}
 

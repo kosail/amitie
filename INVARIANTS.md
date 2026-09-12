@@ -11,7 +11,7 @@
 ## A. Product invariants
 
 - **INV-001 — Core feature.** `La Mesa + El Revés` is the core feature and the primary demo. It must never be demoted, removed, or reduced to a secondary flow.
-- **INV-002 — Secondary feature.** `Saving Bags` is the second pillar. It must ship, but it must never displace `La Mesa + El Revés` in scope, time, or demo priority.
+- **INV-002 — Staged feature.** `Saving Bags` is **PENDING TO BE RELEASED** (staged, not shipped). If released, it is the secondary pillar and must never displace `La Mesa + El Revés` in scope, time, or demo priority.
 - **INV-003 — Accessibility is automatic.** `Voz y Color` activates automatically from account flags (elderly, blind, other accessibility needs, or low literacy). It is not an opt-in toggle and not a separate app.
 - **INV-004 — Transparency and proof are product.** `Caja de Cristal` (exposed, editable assumptions) and the `Kill Test` (the experience collapses without the LLM) are product features, not pitch-only slides.
 - **INV-005 — Winning is mandatory.** Every scope, architecture, and demo decision is judged against winning the hackathon. Reliability and demonstrable impact outrank novelty for its own sake.
@@ -26,7 +26,7 @@
   - STT: **Gemini** multimodal (primary) → **faster-whisper** (fallback)
   - Web research: **Gemini + Google Search grounding** (primary) → **deterministic price table** (fallback)
 - **INV-013 — Env-only provider swap.** Switching any provider is a configuration change in `.env`. No source-code change may be required to swap a provider.
-- **INV-014 — MCP is the only door.** The agent accesses all data, models, computations, and actions exclusively through MCP. There are separate MCP servers: `finance`, `savings`, `ui`, `voice`.
+- **INV-014 — MCP is the only door.** The agent accesses all data, models, computations, and actions exclusively through MCP. There are separate in-process MCP servers: `finance`, `ui`, `voice` (`savings` is staged/pending, `INV-002`).
 - **INV-015 — Deterministic math.** The LLM never computes amortization, feasibility, projections, or any other financial arithmetic. A deterministic engine does. The LLM decides strategy and which interface to build; MCP computes numbers.
 - **INV-016 — A2UI is mandatory and custom.** A2UI (v0.9.1 message model) is the interface protocol. Components come only from catalogs built by this team. **No third-party UI component libraries.**
 - **INV-017 — Closed loop.** Every user interaction with a generated component returns to the agent as context via the `a2ui_action` path and can change what the agent does next. The UI must never be generated once and terminate.
@@ -35,14 +35,14 @@
 
 ## C. Data & interface invariants
 
-- **INV-020 — Storage.** All data lives in a local **SQLite** file accessed through the persistence port (INV-019). All data is mocked/seeded. No real banking integrations, no remote or managed database, no auth system.
-- **INV-021 — Persisted generation.** Every generated UI is persisted per user and associated to its domain (`loans_credits` or `saving_bag`) and entity, stored with **placeholders** rather than literal values.
+- **INV-020 — Storage.** All data lives in a local **SQLite** file accessed through the persistence port (INV-019). All data is mocked/seeded. No real banking integrations, no remote or managed database. No production/general auth system; a minimal, local, seeded **demo login** is permitted (no signup, password reset, SSO, or account lifecycle — see `SPECS.md` §12).
+- **INV-021 — Persisted generation.** Every generated UI is persisted per user and associated to its domain (`loans_credits`; the `saving_bag` domain is pending, `INV-002`) and entity, stored with **placeholders** rather than literal values.
 - **INV-022 — Freshness + revalidation.** Placeholders move *data* only. Before every delivery the backend hydrates placeholders from the local database (INV-019) **and** runs an agent revalidation pass that may mutate *structure*. **Stale or leaked data must never be delivered.**
-- **INV-023 — Frozen frontend boundary.** The backend exposes a frozen REST contract. The frontend team owns rendering; the backend team owns data, orchestration, and logic. Backend must not depend on frontend internals.
+- **INV-023 — Frozen frontend boundary.** The backend exposes a frozen REST contract. It has two documented surfaces: the **A2UI** contract (`SPECS.md` §8) and a plain-**REST extension** for native screens (`SPECS.md` §8.1). The frontend team owns rendering; the backend team owns data, orchestration, and logic. Backend must not depend on frontend internals.
 
 ## D. Scope & delivery invariants
 
-- **INV-030 — Hard cut line.** The shippable scope is: two `La Mesa` mutation moments, `El Revés`, one `Saving Bag`, and one accessible persona. Anything beyond this is cut unless it directly serves one of these.
+- **INV-030 — Hard cut line.** The shippable scope is: two `La Mesa` mutation moments, `El Revés`, the voice-first `Loans & Credits` consult, and one accessible persona. `Saving Bags` is staged/pending (`INV-002`). Anything beyond this is cut unless it directly serves one of these.
 - **INV-031 — One interaction over ten features.** Impact per engineering hour is the primary optimization. No feature ships that does not strengthen the core demonstration.
 - **INV-032 — Kill Test stays truthful.** The `Kill Test` must exercise the real stored UI with frozen data and no agent. It may never be staged or faked.
 

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import uuid
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 from agent.loans import LoansConsultService
 from db.port import DatabasePort
@@ -13,13 +14,48 @@ from mcp_servers.toolbox import Toolbox
 
 from ..dependencies import get_database, get_loans_service, get_toolbox, now_iso
 from ..schemas import (
+    LoanResponse,
     LoansConsultRequest,
     LoansConsultResponse,
+    LoansCreateRequest,
     LoansGreetingRequest,
-    LoansGreetingResponse,
 )
 
 router = APIRouter(prefix="/api/loans", tags=["loans"])
+
+
+async def _audio_bytes(toolbox: Toolbox, audio_id: str | None) -> bytes | None:
+    if not audio_id:
+        return None
+    meta = await toolbox.call("get_audio", {"asset_id": audio_id})
+    file_path = meta.get("file_path") if isinstance(meta, dict) else None
+    if file_path and Path(file_path).is_file():
+        return Path(file_path).read_bytes()
+    return None
+
+
+def _multipart(payload: dict, audio: bytes | None, filename: str = "reply.mp3") -> Response:
+    """Return `multipart/form-data` with a JSON `payload` part and an `audio` mp3 part."""
+    boundary = "----lamamesa" + uuid.uuid4().hex
+    chunks: list[bytes] = []
+
+    def add(name: str, data: bytes, ctype: str | None = None, fname: str | None = None) -> None:
+        disposition = f'Content-Disposition: form-data; name="{name}"'
+        if fname:
+            disposition += f'; filename="{fname}"'
+        head = f"--{boundary}\r\n{disposition}\r\n"
+        if ctype:
+            head += f"Content-Type: {ctype}\r\n"
+        head += "\r\n"
+        chunks.append(head.encode("utf-8") + data + b"\r\n")
+
+    add("payload", json.dumps(payload, ensure_ascii=False).encode("utf-8"), "application/json")
+    if audio:
+        add("audio", audio, "audio/mpeg", filename)
+    chunks.append(f"--{boundary}--\r\n".encode("utf-8"))
+    return Response(
+        content=b"".join(chunks), media_type=f"multipart/form-data; boundary={boundary}"
+    )
 
 
 async def _create_loan_request(database: DatabasePort, user_id: str) -> str:
@@ -56,12 +92,13 @@ async def _append_turns(
     )
 
 
-@router.post("/greeting", response_model=LoansGreetingResponse)
+@router.post("/greeting")
 async def greeting(
     payload: LoansGreetingRequest,
     database: DatabasePort = Depends(get_database),
+    toolbox: Toolbox = Depends(get_toolbox),
     loans: LoansConsultService = Depends(get_loans_service),
-) -> LoansGreetingResponse:
+) -> Response:
     session_id = "sess_" + uuid.uuid4().hex[:12]
     now = now_iso()
     await database.execute(
@@ -70,16 +107,17 @@ async def greeting(
         (session_id, payload.user_id, None, "{}", now, now),
     )
     result = await loans.greeting(user_id=payload.user_id)
-    return LoansGreetingResponse(session_id=session_id, **result)
+    audio = await _audio_bytes(toolbox, result.get("audio_id"))
+    return _multipart({"session_id": session_id, **result}, audio, filename="greeting.mp3")
 
 
-@router.post("/consult", response_model=LoansConsultResponse)
+@router.post("/consult")
 async def consult(
     payload: LoansConsultRequest,
     database: DatabasePort = Depends(get_database),
     toolbox: Toolbox = Depends(get_toolbox),
     loans: LoansConsultService = Depends(get_loans_service),
-) -> LoansConsultResponse:
+) -> Response:
     session = await database.fetch_one(
         "SELECT id, user_id FROM sessions WHERE id = ?", (payload.session_id,)
     )
@@ -95,16 +133,20 @@ async def consult(
         )
         if transcription.get("status") != "ok":
             issues = transcription.get("issues") or ["could not transcribe audio"]
-            return LoansConsultResponse(
-                status="error",
-                error_code="transcription_failed",
-                retryable=True,
-                message="; ".join(issues),
+            return _multipart(
+                {
+                    "status": "error",
+                    "error_code": "transcription_failed",
+                    "retryable": True,
+                    "message": "; ".join(issues),
+                },
+                None,
             )
         text = transcription.get("text")
     if not text:
-        return LoansConsultResponse(
-            status="error", error_code="bad_request", message="text or audio is required"
+        return _multipart(
+            {"status": "error", "error_code": "bad_request", "message": "text or audio is required"},
+            None,
         )
 
     loan_id = payload.loan_request_id
@@ -135,7 +177,31 @@ async def consult(
                 "UPDATE loan_requests SET status = 'terminal', updated_at = ? WHERE id = ?",
                 (now_iso(), loan_id),
             )
-    return LoansConsultResponse(**result)
+    audio = await _audio_bytes(toolbox, result.get("audio_id"))
+    return _multipart(dict(result), audio)
+
+
+@router.post("", response_model=LoanResponse)
+async def create_loan(
+    payload: LoansCreateRequest,
+    toolbox: Toolbox = Depends(get_toolbox),
+) -> LoanResponse:
+    """Create the offered loan and disburse it. Called only when the user accepts."""
+    result = await toolbox.call(
+        "create_loan",
+        {
+            "user_id": payload.user_id,
+            "amount": payload.amount,
+            "term_months": payload.months,
+            "loan_request_id": payload.loan_request_id or "",
+        },
+    )
+    if result.get("status") != "ok":
+        raise HTTPException(
+            status_code=400,
+            detail="; ".join(result.get("issues", ["no se pudo crear el crédito"])),
+        )
+    return LoanResponse(status="ok", loan=result.get("loan"))
 
 
 @router.get("/{loan_request_id}", response_model=LoansConsultResponse)
@@ -161,10 +227,19 @@ async def get_loan(
         hydrated = await toolbox.call("hydrate_ui", {"surface_id": surface["id"]})
         if hydrated.get("status") == "ok":
             audio_ref = hydrated.get("audio_ref")
+            a2ui = hydrated.get("a2ui", [])
+            data_model: dict = {}
+            for message in a2ui:
+                if isinstance(message, dict) and "updateDataModel" in message:
+                    data_model = message["updateDataModel"].get("value") or {}
+                    break
+            from agent.loans import resolve_loan_bindings
+
+            a2ui = resolve_loan_bindings(a2ui, data_model)
             terminal = {
                 "catalog_id": hydrated.get("catalog_id"),
                 "surface_id": surface["id"],
-                "a2ui": hydrated.get("a2ui", []),
+                "a2ui": a2ui,
             }
     return LoansConsultResponse(
         status="ok",

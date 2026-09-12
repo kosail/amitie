@@ -37,6 +37,17 @@ async def _ensure_columns(database: DatabasePort) -> None:
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)"
     )
 
+    liability_columns = {
+        row["name"] for row in await database.fetch_all("PRAGMA table_info(liabilities)")
+    }
+    for name, ddl in (
+        ("term_months", "INTEGER"),
+        ("opening_fee", "REAL DEFAULT 0"),
+        ("insurance_fee", "REAL DEFAULT 0"),
+        ("cat", "REAL DEFAULT 0"),
+    ):
+        if name not in liability_columns:
+            await database.execute(f"ALTER TABLE liabilities ADD COLUMN {name} {ddl}")
     transaction_columns = {
         row["name"] for row in await database.fetch_all("PRAGMA table_info(transactions)")
     }

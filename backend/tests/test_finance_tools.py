@@ -115,5 +115,77 @@ class FinanceToolsTest(unittest.TestCase):
             asyncio.run(run())
 
 
+    def test_credit_history_includes_raw_transactions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            database = LocalSQLiteDatabase(Path(tmp) / "finance.sqlite3")
+
+            async def run() -> None:
+                await apply_schema(database)
+                await seed(database)
+                server = build_finance_server(database)
+
+                async with InProcessToolbox({"finance": server}) as toolbox:
+                    result = await toolbox.call("get_credit_history", {"user_id": "u_ana"})
+
+                history = result["creditHistory"]
+                self.assertTrue(history["recentTransactions"])
+                first = history["recentTransactions"][0]
+                for key in ("occurredOn", "amount", "direction", "category"):
+                    self.assertIn(key, first)
+                await database.close()
+
+            asyncio.run(run())
+
+
+    def test_analyze_loans_returns_engine_scenarios(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            database = LocalSQLiteDatabase(Path(tmp) / "finance.sqlite3")
+
+            async def run() -> None:
+                await apply_schema(database)
+                await seed(database)
+                server = build_finance_server(database)
+
+                async with InProcessToolbox({"finance": server}) as toolbox:
+                    result = await toolbox.call("analyze_loans", {"user_id": "u_ana"})
+
+                analysis = result["analysis"]
+                self.assertEqual(analysis["highCost"][0]["creditor"], "Elektra")
+                self.assertTrue(analysis["scenarios"])
+                self.assertEqual(analysis["nextBestAction"]["targetCreditor"], "Elektra")
+                await database.close()
+
+            asyncio.run(run())
+
+
+    def test_loan_offer_and_create_disburses(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            database = LocalSQLiteDatabase(Path(tmp) / "finance.sqlite3")
+
+            async def run() -> None:
+                await apply_schema(database)
+                await seed(database)
+                server = build_finance_server(database)
+
+                async with InProcessToolbox({"finance": server}) as toolbox:
+                    offer = await toolbox.call("compute_loan_offer", {"user_id": "u_don"})
+                    self.assertGreater(offer["offer"]["offer"]["amount"], 0)
+
+                    created = await toolbox.call(
+                        "create_loan", {"user_id": "u_don", "amount": 10000.0}
+                    )
+                    self.assertEqual(created["status"], "ok")
+                    self.assertGreater(len(created["loan"]["schedule"]), 0)
+
+                    accounts = await toolbox.call("get_accounts", {"user_id": "u_don"})
+                    checking = next(
+                        a for a in accounts["accounts"] if a["kind"] == "checking"
+                    )
+                    self.assertEqual(checking["balance"], 2100.0 + 10000.0)
+                await database.close()
+
+            asyncio.run(run())
+
+
 if __name__ == "__main__":
     unittest.main()
