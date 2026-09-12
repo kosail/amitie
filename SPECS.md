@@ -85,6 +85,8 @@
 - [x] **REQ-DATA-04** — All persistence is reached through a narrow persistence port; the agent and MCP layers never touch the SQLite driver directly.
 - [ ] **REQ-DATA-05** — The local backend is exposed to the internet exclusively through a Cloudflare Tunnel; no Cloudflare database or Workers runtime is used.
 
+> **Contract note (2026-09-12):** `backend/api/routers/finance.py` adds `GET /api/profile`, `GET /api/accounts`, `GET /api/liabilities`, and `POST /api/liabilities/{id}/payment` alongside this section's A2UI-only contract, for native frontend screens (Inicio, Préstamos) that render their own UI instead of a generated surface. Still reached only through the `finance` MCP server (INV-014). Not yet promoted to numbered `REQ-API-*` entries — pending an explicit decision on whether to formalize this as a second, non-A2UI contract surface. See `CHANGELOG.md`.
+
 ## 10. Non-functional
 
 - [x] **REQ-NFR-01** — Provider failover works without code changes and keeps development/demo alive on quota exhaustion (Gemini→DeepSeek, ElevenLabs→edge-tts, Gemini STT→faster-whisper, grounding→fallback table).
@@ -101,12 +103,21 @@
 - [ ] **REQ-DEMO-03** — The accessible persona demonstrates the same agent producing a different catalog with audio in/out.
 - [ ] **REQ-DEMO-04** — A recorded golden-path video exists as a fallback.
 
-## 12. Explicitly out of scope
+## 12. Real login (native screen extension)
 
-- Authentication / authorization systems.
+Added 2026-09-12, alongside the §9 finance contract note, for the native login screen. Not part of the original §8 A2UI contract.
+
+- [x] **REQ-AUTH-01** — `POST /api/login` verifies a username + password against the `users` table (`username`, `password_hash`, `password_salt` columns) and returns `{session_id, user_id, username, accessibility_mode}` on success.
+- [x] **REQ-AUTH-02** — Passwords are never stored or logged in plaintext; hashing is PBKDF2-HMAC-SHA256 with a random per-user salt (`backend/auth/passwords.py`), stdlib-only (no new dependency).
+- [x] **REQ-AUTH-03** — An unknown username or an incorrect password both return `401` with the same generic message (no username enumeration).
+- [x] **REQ-AUTH-04** — The two seeded personas (`u_ana`/`u_don`) each get a real, fixed demo login (`demo`/`demo1234` and `accesible`/`demo1234`) via deterministic, fixed-salt seed hashes (`db/seed.py`) so `python -m db.init` stays reproducible (REQ-DATA-02).
+
+## 13. Explicitly out of scope
+
 - Production databases or real banking integrations.
 - Remote or managed databases; all persistence is a local SQLite file.
-- Payment rails or real money movement.
-- Native mobile applications (frontend is a web surface).
+- Payment rails or real money movement with an outside bank (internal, persisted ledger movement between seeded accounts is in scope — see §9's contract note and §12).
 - Deployment infrastructure, microservices orchestration, or elaborate analytics.
 - Third-party UI component libraries.
+
+> **Scope change (2026-09-12):** "Authentication / authorization systems" was removed from this list, with explicit human approval in-session. The frontend's login screen now performs real credential verification (`POST /api/login`, §12) against the two seeded personas — this stays a small, hackathon-scale mechanism (stdlib PBKDF2 password hashing, two fixed demo accounts, no signup/registration/password-reset flow), not a general auth system. See `CHANGELOG.md`.

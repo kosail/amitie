@@ -7,11 +7,21 @@ with fresh values.
 
 from __future__ import annotations
 
+import uuid
+from datetime import date, datetime, timezone
 from typing import Any
 
 from db.port import DatabasePort
 from engine import offer as offer_engine
 from engine import planning
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _payment_id() -> str:
+    return "txn_" + uuid.uuid4().hex[:10]
 
 
 async def get_profile(database: DatabasePort, user_id: str) -> dict[str, Any] | None:
@@ -57,6 +67,147 @@ async def get_liabilities(database: DatabasePort, user_id: str) -> list[dict[str
         }
         for row in rows
     ]
+
+
+def _liability_row(row: Any) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "creditor": row["creditor"],
+        "kind": row["kind"],
+        "principal": row["principal"],
+        "balance": row["balance"],
+        "apr": row["apr"],
+        "minPayment": row["min_payment"],
+        "dueDay": row["due_day"],
+        "nominaDiscount": row["nomina_discount"],
+        "status": row["status"],
+    }
+
+
+async def get_accounts(database: DatabasePort, user_id: str) -> list[dict[str, Any]]:
+    rows = await database.fetch_all(
+        "SELECT id, user_id, kind, institution, balance, currency FROM accounts "
+        "WHERE user_id = ? ORDER BY kind ASC, id ASC",
+        (user_id,),
+    )
+    return [
+        {
+            "id": row["id"],
+            "userId": row["user_id"],
+            "kind": row["kind"],
+            "institution": row["institution"],
+            "balance": row["balance"],
+            "currency": row["currency"],
+        }
+        for row in rows
+    ]
+
+
+async def make_payment(
+    database: DatabasePort,
+    user_id: str,
+    liability_id: str,
+    amount: float,
+    account_id: str | None = None,
+) -> dict[str, Any]:
+    """Apply an extra/regular payment ("abono") to a liability.
+
+    Deterministic and idempotent-safe: validates funds, moves money out of the
+    funding account, reduces the liability balance, and records a transaction
+    row, all in a single batch write (INV-015: the LLM never touches this math).
+    """
+    if amount is None or amount <= 0:
+        return {"status": "error", "issues": ["El monto debe ser mayor a cero."]}
+
+    liability_row = await database.fetch_one(
+        "SELECT id, creditor, kind, principal, balance, apr, min_payment, due_day, "
+        "nomina_discount, status FROM liabilities WHERE id = ? AND user_id = ?",
+        (liability_id, user_id),
+    )
+    if liability_row is None:
+        return {"status": "error", "issues": ["No se encontró ese préstamo."]}
+    if liability_row["status"] != "active":
+        return {"status": "error", "issues": ["Este préstamo ya no está activo."]}
+
+    if account_id:
+        account_row = await database.fetch_one(
+            "SELECT id, user_id, kind, institution, balance, currency FROM accounts "
+            "WHERE id = ? AND user_id = ?",
+            (account_id, user_id),
+        )
+    else:
+        account_row = await database.fetch_one(
+            "SELECT id, user_id, kind, institution, balance, currency FROM accounts "
+            "WHERE user_id = ? ORDER BY (kind = 'checking') DESC, balance DESC LIMIT 1",
+            (user_id,),
+        )
+    if account_row is None:
+        return {"status": "error", "issues": ["No se encontró una cuenta de origen."]}
+    if account_row["balance"] < amount:
+        return {"status": "error", "issues": ["Fondos insuficientes en la cuenta de origen."]}
+
+    applied = round(min(amount, liability_row["balance"]), 2)
+    new_liability_balance = round(liability_row["balance"] - applied, 2)
+    new_status = "paid" if new_liability_balance <= 0.01 else liability_row["status"]
+    new_account_balance = round(account_row["balance"] - amount, 2)
+
+    payment_id = _payment_id()
+    occurred_on = date.today().isoformat()
+
+    await database.batch(
+        [
+            (
+                "UPDATE liabilities SET balance = ?, status = ? WHERE id = ?",
+                (new_liability_balance, new_status, liability_id),
+            ),
+            (
+                "UPDATE accounts SET balance = ? WHERE id = ?",
+                (new_account_balance, account_row["id"]),
+            ),
+            (
+                "INSERT INTO transactions (id, user_id, account_id, occurred_on, amount, "
+                "direction, category, merchant, is_subscription) VALUES (?,?,?,?,?,?,?,?,?)",
+                (
+                    payment_id,
+                    user_id,
+                    account_row["id"],
+                    occurred_on,
+                    applied,
+                    "out",
+                    "debt_payment",
+                    liability_row["creditor"],
+                    0,
+                ),
+            ),
+        ]
+    )
+
+    updated_liability = dict(liability_row)
+    updated_liability["balance"] = new_liability_balance
+    updated_liability["status"] = new_status
+
+    return {
+        "status": "ok",
+        "appliedAmount": applied,
+        "liability": _liability_row(updated_liability),
+        "account": {
+            "id": account_row["id"],
+            "userId": account_row["user_id"],
+            "kind": account_row["kind"],
+            "institution": account_row["institution"],
+            "balance": new_account_balance,
+            "currency": account_row["currency"],
+        },
+        "transaction": {
+            "id": payment_id,
+            "accountId": account_row["id"],
+            "occurredOn": occurred_on,
+            "amount": applied,
+            "direction": "out",
+            "category": "debt_payment",
+            "merchant": liability_row["creditor"],
+        },
+    }
 
 
 async def get_income_streams(database: DatabasePort, user_id: str) -> list[dict[str, Any]]:

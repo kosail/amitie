@@ -56,6 +56,64 @@ class FinanceToolsTest(unittest.TestCase):
 
             asyncio.run(run())
 
+    def test_make_payment_moves_real_balances(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            database = LocalSQLiteDatabase(Path(tmp) / "finance.sqlite3")
+
+            async def run() -> None:
+                await apply_schema(database)
+                await seed(database)
+                server = build_finance_server(database)
+
+                async with InProcessToolbox({"finance": server}) as toolbox:
+                    accounts_before = await toolbox.call("get_accounts", {"user_id": "u_ana"})
+                    checking = next(
+                        a for a in accounts_before["accounts"] if a["kind"] == "checking"
+                    )
+
+                    result = await toolbox.call(
+                        "make_payment",
+                        {"user_id": "u_ana", "liability_id": "l_electronica", "amount": 1000.0},
+                    )
+                    self.assertEqual(result["status"], "ok")
+                    self.assertEqual(result["appliedAmount"], 1000.0)
+                    self.assertEqual(result["liability"]["balance"], 6200.0)
+                    self.assertEqual(result["liability"]["status"], "active")
+                    self.assertEqual(result["account"]["balance"], checking["balance"] - 1000.0)
+
+                    liabilities = await toolbox.call("get_liabilities", {"user_id": "u_ana"})
+                    updated = next(
+                        item
+                        for item in liabilities["liabilities"]
+                        if item["id"] == "l_electronica"
+                    )
+                    self.assertEqual(updated["balance"], 6200.0)
+
+                    # Overpaying beyond the remaining balance clears the liability and
+                    # only debits what was actually owed.
+                    payoff = await toolbox.call(
+                        "make_payment",
+                        {"user_id": "u_ana", "liability_id": "l_electronica", "amount": 6200.0},
+                    )
+                    self.assertEqual(payoff["status"], "ok")
+                    self.assertEqual(payoff["liability"]["balance"], 0.0)
+                    self.assertEqual(payoff["liability"]["status"], "paid")
+
+                    # Insufficient funds is rejected, not silently clamped.
+                    rejected = await toolbox.call(
+                        "make_payment",
+                        {
+                            "user_id": "u_ana",
+                            "liability_id": "l_bbva_tdc",
+                            "amount": 10_000_000.0,
+                        },
+                    )
+                    self.assertEqual(rejected["status"], "error")
+
+                await database.close()
+
+            asyncio.run(run())
+
 
 if __name__ == "__main__":
     unittest.main()

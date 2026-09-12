@@ -30,7 +30,18 @@ from providers.registry import build_llm_gateway, build_research, build_stt, bui
 from providers.research import ResearchProvider
 from providers.voice import STTProvider, TTSProvider
 
-from .routers import action, audio, debug, message, negotiation, saving_bags, session, ui
+from .routers import (
+    action,
+    audio,
+    auth,
+    debug,
+    finance,
+    message,
+    negotiation,
+    saving_bags,
+    session,
+    ui,
+)
 
 
 def create_app(
@@ -99,10 +110,12 @@ def create_app(
     app.add_middleware(TraceMiddleware, tracer=tracer)
 
     app.include_router(session.router)
+    app.include_router(auth.router)
     app.include_router(message.router)
     app.include_router(action.router)
     app.include_router(negotiation.router)
     app.include_router(saving_bags.router)
+    app.include_router(finance.router)
     app.include_router(ui.router)
     app.include_router(audio.router)
     app.include_router(debug.router)

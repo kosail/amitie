@@ -16,6 +16,18 @@ class SessionResponse(BaseModel):
     user_id: str
 
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    session_id: str
+    user_id: str
+    username: str
+    accessibility_mode: str | None = None
+
+
 class MessageRequest(BaseModel):
     session_id: str
     text: str | None = None
@@ -77,6 +89,35 @@ class ProviderHealth(BaseModel):
 class ProvidersResponse(BaseModel):
     status: str
     providers: list[ProviderHealth] = Field(default_factory=list)
+
+
+class ProfileResponse(BaseModel):
+    profile: dict[str, Any] | None = None
+
+
+class AccountsResponse(BaseModel):
+    accounts: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class LiabilitiesResponse(BaseModel):
+    liabilities: list[dict[str, Any]] = Field(default_factory=list)
+    total_debt: float = 0.0
+    total_min_payment: float = 0.0
+
+
+class PaymentRequest(BaseModel):
+    user_id: str = "u_ana"
+    amount: float
+    account_id: str | None = None
+
+
+class PaymentResponse(BaseModel):
+    status: str
+    applied_amount: float = 0.0
+    liability: dict[str, Any] | None = None
+    account: dict[str, Any] | None = None
+    transaction: dict[str, Any] | None = None
+    issues: list[str] = Field(default_factory=list)
 
 
 class SavingBagCreateRequest(BaseModel):

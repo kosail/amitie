@@ -25,3 +25,14 @@ async def _ensure_columns(database: DatabasePort) -> None:
     columns = {row["name"] for row in rows}
     if "frozen_json" not in columns:
         await database.execute("ALTER TABLE generated_ui ADD COLUMN frozen_json TEXT")
+
+    user_columns = {row["name"] for row in await database.fetch_all("PRAGMA table_info(users)")}
+    if "username" not in user_columns:
+        await database.execute("ALTER TABLE users ADD COLUMN username TEXT")
+    if "password_hash" not in user_columns:
+        await database.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
+    if "password_salt" not in user_columns:
+        await database.execute("ALTER TABLE users ADD COLUMN password_salt TEXT")
+    await database.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)"
+    )

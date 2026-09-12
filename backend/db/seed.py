@@ -10,9 +10,18 @@ import random
 from datetime import date
 from typing import Any, Iterable, Sequence
 
+from auth.passwords import hash_password
+
 from .port import DatabasePort
 
 NOW = "2026-09-12T12:00:00Z"
+
+# Fixed salts (not secret — this is a seeded demo DB) so the seed stays
+# byte-for-byte reproducible across runs (REQ-DATA-02), instead of a fresh
+# random salt every `db.init`.
+_DEMO_PASSWORD = "demo1234"
+_ANA_PASSWORD_HASH, _ANA_PASSWORD_SALT = hash_password(_DEMO_PASSWORD, salt="seed-salt-u-ana")
+_DON_PASSWORD_HASH, _DON_PASSWORD_SALT = hash_password(_DEMO_PASSWORD, salt="seed-salt-u-don")
 
 Columns = Sequence[str]
 Rows = Iterable[Sequence[Any]]
@@ -72,10 +81,46 @@ def build_seed_statements() -> list[tuple[str, tuple]]:
 
     statements += _inserts(
         "users",
-        ("id", "name", "age", "city", "monthly_income", "pay_frequency", "credit_score", "created_at"),
+        (
+            "id",
+            "name",
+            "age",
+            "city",
+            "monthly_income",
+            "pay_frequency",
+            "credit_score",
+            "created_at",
+            "username",
+            "password_hash",
+            "password_salt",
+        ),
         [
-            ("u_ana", "Ana López", 32, "CDMX", 19000.0, "quincenal", 640, NOW),
-            ("u_don", "Don Miguel", 71, "Puebla", 7200.0, "mensual", 590, NOW),
+            (
+                "u_ana",
+                "Ana López",
+                32,
+                "CDMX",
+                19000.0,
+                "quincenal",
+                640,
+                NOW,
+                "demo",
+                _ANA_PASSWORD_HASH,
+                _ANA_PASSWORD_SALT,
+            ),
+            (
+                "u_don",
+                "Don Miguel",
+                71,
+                "Puebla",
+                7200.0,
+                "mensual",
+                590,
+                NOW,
+                "accesible",
+                _DON_PASSWORD_HASH,
+                _DON_PASSWORD_SALT,
+            ),
         ],
     )
 

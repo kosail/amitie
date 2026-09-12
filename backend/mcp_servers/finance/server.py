@@ -29,6 +29,22 @@ def build_finance_server(database: DatabasePort) -> MCPServer:
         }
 
     @server.tool()
+    async def get_accounts(user_id: str) -> dict[str, Any]:
+        """Return the user's accounts with their current balances."""
+        return {"accounts": await service.get_accounts(database, user_id)}
+
+    @server.tool()
+    async def make_payment(
+        user_id: str, liability_id: str, amount: float, account_id: str | None = None
+    ) -> dict[str, Any]:
+        """Apply a real payment ("abono") against a liability, moving funds out of an
+        account and recording a transaction. Deterministic; the LLM never computes
+        this math."""
+        return await service.make_payment(
+            database, user_id, liability_id, amount, account_id=account_id
+        )
+
+    @server.tool()
     async def get_income_streams(user_id: str) -> dict[str, Any]:
         """Return the user's income streams."""
         return {"incomeStreams": await service.get_income_streams(database, user_id)}
