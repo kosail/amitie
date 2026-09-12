@@ -15,6 +15,8 @@ from db.port import DatabasePort
 from engine import offer as offer_engine
 from engine import planning
 
+from .clabe import is_valid_clabe
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -22,6 +24,10 @@ def _now() -> str:
 
 def _payment_id() -> str:
     return "txn_" + uuid.uuid4().hex[:10]
+
+
+def _recipient_id() -> str:
+    return "rcpt_" + uuid.uuid4().hex[:10]
 
 
 async def get_profile(database: DatabasePort, user_id: str) -> dict[str, Any] | None:
@@ -207,6 +213,278 @@ async def make_payment(
             "category": "debt_payment",
             "merchant": liability_row["creditor"],
         },
+    }
+
+
+def _recipient_row(row: Any) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "alias": row["alias"],
+        "clabe": row["clabe"],
+        "bankName": row["bank_name"],
+        "createdAt": row["created_at"],
+    }
+
+
+async def list_recipients(database: DatabasePort, user_id: str) -> list[dict[str, Any]]:
+    rows = await database.fetch_all(
+        "SELECT id, alias, clabe, bank_name, created_at FROM saved_recipients "
+        "WHERE user_id = ? ORDER BY created_at DESC, id ASC",
+        (user_id,),
+    )
+    return [_recipient_row(row) for row in rows]
+
+
+async def create_recipient(
+    database: DatabasePort, user_id: str, alias: str, clabe: str, bank_name: str
+) -> dict[str, Any]:
+    """Save a new recipient (CLABE + bank + alias) for future transfers.
+
+    Re-validates the CLABE checksum server-side (INV-015: never trust the
+    client alone for a money-adjacent field), mirroring the frontend's
+    `src/features/transfers/clabe.ts` algorithm exactly (`.clabe` module).
+    """
+    if not alias or not alias.strip():
+        return {"status": "error", "issues": ["El alias no puede estar vacío."]}
+    if not is_valid_clabe(clabe):
+        return {
+            "status": "error",
+            "issues": ["La CLABE no es válida (dígito verificador incorrecto)."],
+        }
+    if not bank_name or not bank_name.strip():
+        return {"status": "error", "issues": ["Selecciona un banco."]}
+
+    recipient_id = _recipient_id()
+    created_at = _now()
+    await database.execute(
+        "INSERT INTO saved_recipients (id, user_id, alias, clabe, bank_name, created_at) "
+        "VALUES (?,?,?,?,?,?)",
+        (recipient_id, user_id, alias.strip(), clabe, bank_name, created_at),
+    )
+    return {
+        "status": "ok",
+        "recipient": {
+            "id": recipient_id,
+            "alias": alias.strip(),
+            "clabe": clabe,
+            "bankName": bank_name,
+            "createdAt": created_at,
+        },
+    }
+
+
+async def transfer_funds(
+    database: DatabasePort,
+    user_id: str,
+    source_account_id: str,
+    amount: float,
+    memo: str,
+    destination: dict[str, Any],
+) -> dict[str, Any]:
+    """Move real, persisted money out of `source_account_id`.
+
+    Deterministic and single-batch, same shape as `make_payment` (INV-015:
+    the LLM never touches this math): validates funds and ownership first,
+    then either (destination.kind == "own") debits the source and credits
+    the destination account belonging to the same user in one write with two
+    `transactions` rows, or (destination.kind == "external") debits the
+    source only, records one `transactions` row, and optionally saves the
+    recipient — all in a single `database.batch()`.
+    """
+    if amount is None or amount <= 0:
+        return {"status": "error", "issues": ["El monto debe ser mayor a cero."]}
+
+    kind = destination.get("kind") if destination else None
+    if kind not in ("own", "external"):
+        return {"status": "error", "issues": ["Destino de transferencia inválido."]}
+
+    source_row = await database.fetch_one(
+        "SELECT id, user_id, kind, institution, balance, currency FROM accounts "
+        "WHERE id = ? AND user_id = ?",
+        (source_account_id, user_id),
+    )
+    if source_row is None:
+        return {"status": "error", "issues": ["No se encontró la cuenta de origen."]}
+    if source_row["balance"] < amount:
+        return {"status": "error", "issues": ["Fondos insuficientes en la cuenta de origen."]}
+
+    occurred_on = date.today().isoformat()
+    new_source_balance = round(source_row["balance"] - amount, 2)
+
+    if kind == "own":
+        destination_account_id = destination.get("account_id")
+        if not destination_account_id or destination_account_id == source_account_id:
+            return {
+                "status": "error",
+                "issues": ["La cuenta de origen y destino no pueden ser la misma."],
+            }
+        destination_row = await database.fetch_one(
+            "SELECT id, user_id, kind, institution, balance, currency FROM accounts "
+            "WHERE id = ? AND user_id = ?",
+            (destination_account_id, user_id),
+        )
+        if destination_row is None:
+            return {"status": "error", "issues": ["No se encontró la cuenta destino."]}
+
+        new_destination_balance = round(destination_row["balance"] + amount, 2)
+        transfer_id = _payment_id()
+        credit_id = _payment_id()
+
+        await database.batch(
+            [
+                (
+                    "UPDATE accounts SET balance = ? WHERE id = ?",
+                    (new_source_balance, source_row["id"]),
+                ),
+                (
+                    "UPDATE accounts SET balance = ? WHERE id = ?",
+                    (new_destination_balance, destination_row["id"]),
+                ),
+                (
+                    "INSERT INTO transactions (id, user_id, account_id, occurred_on, amount, "
+                    "direction, category, merchant, is_subscription, memo) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        transfer_id,
+                        user_id,
+                        source_row["id"],
+                        occurred_on,
+                        amount,
+                        "out",
+                        "transfer_own",
+                        "Transferencia entre mis cuentas",
+                        0,
+                        memo,
+                    ),
+                ),
+                (
+                    "INSERT INTO transactions (id, user_id, account_id, occurred_on, amount, "
+                    "direction, category, merchant, is_subscription, memo) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        credit_id,
+                        user_id,
+                        destination_row["id"],
+                        occurred_on,
+                        amount,
+                        "in",
+                        "transfer_own",
+                        "Transferencia entre mis cuentas",
+                        0,
+                        memo,
+                    ),
+                ),
+            ]
+        )
+
+        return {
+            "status": "ok",
+            "transfer": {
+                "id": transfer_id,
+                "amount": amount,
+                "memo": memo,
+                "occurredOn": occurred_on,
+                "kind": "own",
+            },
+            "sourceAccount": {
+                "id": source_row["id"],
+                "userId": source_row["user_id"],
+                "kind": source_row["kind"],
+                "institution": source_row["institution"],
+                "balance": new_source_balance,
+                "currency": source_row["currency"],
+            },
+            "destinationAccount": {
+                "id": destination_row["id"],
+                "userId": destination_row["user_id"],
+                "kind": destination_row["kind"],
+                "institution": destination_row["institution"],
+                "balance": new_destination_balance,
+                "currency": destination_row["currency"],
+            },
+            "issues": [],
+        }
+
+    # kind == "external"
+    clabe = destination.get("clabe", "")
+    bank_name = destination.get("bank_name", "")
+    alias = destination.get("alias", "")
+    save_recipient = bool(destination.get("save_recipient", False))
+
+    if not is_valid_clabe(clabe):
+        return {
+            "status": "error",
+            "issues": ["La CLABE no es válida (dígito verificador incorrecto)."],
+        }
+    if not bank_name or not str(bank_name).strip():
+        return {"status": "error", "issues": ["Selecciona un banco."]}
+
+    transfer_id = _payment_id()
+    statements = [
+        (
+            "UPDATE accounts SET balance = ? WHERE id = ?",
+            (new_source_balance, source_row["id"]),
+        ),
+        (
+            "INSERT INTO transactions (id, user_id, account_id, occurred_on, amount, "
+            "direction, category, merchant, is_subscription, memo) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (
+                transfer_id,
+                user_id,
+                source_row["id"],
+                occurred_on,
+                amount,
+                "out",
+                "transfer_external",
+                alias or bank_name,
+                0,
+                memo,
+            ),
+        ),
+    ]
+
+    saved_recipient: dict[str, Any] | None = None
+    if save_recipient:
+        recipient_id = _recipient_id()
+        created_at = _now()
+        statements.append(
+            (
+                "INSERT INTO saved_recipients (id, user_id, alias, clabe, bank_name, created_at) "
+                "VALUES (?,?,?,?,?,?)",
+                (recipient_id, user_id, (alias or bank_name).strip(), clabe, bank_name, created_at),
+            )
+        )
+        saved_recipient = {
+            "id": recipient_id,
+            "alias": (alias or bank_name).strip(),
+            "clabe": clabe,
+            "bankName": bank_name,
+            "createdAt": created_at,
+        }
+
+    await database.batch(statements)
+
+    return {
+        "status": "ok",
+        "transfer": {
+            "id": transfer_id,
+            "amount": amount,
+            "memo": memo,
+            "occurredOn": occurred_on,
+            "kind": "external",
+        },
+        "sourceAccount": {
+            "id": source_row["id"],
+            "userId": source_row["user_id"],
+            "kind": source_row["kind"],
+            "institution": source_row["institution"],
+            "balance": new_source_balance,
+            "currency": source_row["currency"],
+        },
+        "destinationAccount": None,
+        "savedRecipient": saved_recipient,
+        "issues": [],
     }
 
 

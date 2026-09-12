@@ -36,3 +36,9 @@ async def _ensure_columns(database: DatabasePort) -> None:
     await database.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)"
     )
+
+    transaction_columns = {
+        row["name"] for row in await database.fetch_all("PRAGMA table_info(transactions)")
+    }
+    if "memo" not in transaction_columns:
+        await database.execute("ALTER TABLE transactions ADD COLUMN memo TEXT")

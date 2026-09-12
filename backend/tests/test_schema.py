@@ -21,6 +21,7 @@ EXPECTED_TABLES = {
     "audio_assets",
     "sessions",
     "traces",
+    "saved_recipients",
 }
 
 

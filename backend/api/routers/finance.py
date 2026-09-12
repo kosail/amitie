@@ -18,6 +18,11 @@ from ..schemas import (
     PaymentRequest,
     PaymentResponse,
     ProfileResponse,
+    RecipientCreateRequest,
+    RecipientResponse,
+    RecipientsResponse,
+    TransferRequest,
+    TransferResponse,
 )
 
 router = APIRouter(prefix="/api", tags=["finance"])
@@ -78,5 +83,65 @@ async def pay_liability(
         liability=result.get("liability"),
         account=result.get("account"),
         transaction=result.get("transaction"),
+        issues=result.get("issues", []),
+    )
+
+
+@router.get("/recipients", response_model=RecipientsResponse)
+async def get_recipients(
+    user_id: str = Query(default="u_ana"), toolbox: Toolbox = Depends(get_toolbox)
+) -> RecipientsResponse:
+    result = await toolbox.call("list_recipients", {"user_id": user_id})
+    return RecipientsResponse(recipients=result.get("recipients", []))
+
+
+@router.post("/recipients", response_model=RecipientResponse)
+async def create_recipient(
+    payload: RecipientCreateRequest,
+    toolbox: Toolbox = Depends(get_toolbox),
+) -> RecipientResponse:
+    result = await toolbox.call(
+        "create_recipient",
+        {
+            "user_id": payload.user_id,
+            "alias": payload.alias,
+            "clabe": payload.clabe,
+            "bank_name": payload.bank_name,
+        },
+    )
+    if result.get("status") != "ok":
+        raise HTTPException(
+            status_code=400, detail="; ".join(result.get("issues", ["could not save recipient"]))
+        )
+    return RecipientResponse(
+        status=result["status"], recipient=result.get("recipient"), issues=result.get("issues", [])
+    )
+
+
+@router.post("/transfers", response_model=TransferResponse)
+async def submit_transfer(
+    payload: TransferRequest,
+    toolbox: Toolbox = Depends(get_toolbox),
+) -> TransferResponse:
+    result = await toolbox.call(
+        "transfer_funds",
+        {
+            "user_id": payload.user_id,
+            "source_account_id": payload.source_account_id,
+            "amount": payload.amount,
+            "memo": payload.memo,
+            "destination": payload.destination.model_dump(),
+        },
+    )
+    if result.get("status") != "ok":
+        raise HTTPException(
+            status_code=400, detail="; ".join(result.get("issues", ["transfer failed"]))
+        )
+    return TransferResponse(
+        status=result["status"],
+        transfer=result.get("transfer"),
+        source_account=result.get("sourceAccount"),
+        destination_account=result.get("destinationAccount"),
+        saved_recipient=result.get("savedRecipient"),
         issues=result.get("issues", []),
     )

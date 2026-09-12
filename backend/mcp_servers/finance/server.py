@@ -45,6 +45,35 @@ def build_finance_server(database: DatabasePort) -> MCPServer:
         )
 
     @server.tool()
+    async def list_recipients(user_id: str) -> dict[str, Any]:
+        """Return the user's saved transfer recipients (alias, CLABE, bank)."""
+        return {"recipients": await service.list_recipients(database, user_id)}
+
+    @server.tool()
+    async def create_recipient(
+        user_id: str, alias: str, clabe: str, bank_name: str
+    ) -> dict[str, Any]:
+        """Save a new transfer recipient. Re-validates the CLABE checksum
+        server-side; never trusts the client's validation alone."""
+        return await service.create_recipient(database, user_id, alias, clabe, bank_name)
+
+    @server.tool()
+    async def transfer_funds(
+        user_id: str,
+        source_account_id: str,
+        amount: float,
+        memo: str,
+        destination: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Move real, persisted money out of the source account — to another
+        of the user's own accounts (crediting it) or to an external CLABE
+        recipient (source-only debit). Deterministic; the LLM never computes
+        this math."""
+        return await service.transfer_funds(
+            database, user_id, source_account_id, amount, memo, destination
+        )
+
+    @server.tool()
     async def get_income_streams(user_id: str) -> dict[str, Any]:
         """Return the user's income streams."""
         return {"incomeStreams": await service.get_income_streams(database, user_id)}
