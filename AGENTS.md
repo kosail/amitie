@@ -83,13 +83,14 @@ Root documents: `AGENTS.md`, `INVARIANTS.md`, `SPECS.md`, `CHANGELOG.md`, and `A
 /backend
   api/            FastAPI app factory, lifespan, DI, routers (session, message, action, ui, debug)
   agent/          ADK orchestrator: model.py (GatewayLlm), tools.py (MCP->ADK), service.py, negotiation.py (El Reves)
-  providers/      base interfaces + gemini, deepseek, elevenlabs, edge_tts, faster_whisper, registry
+  providers/      base interfaces + gemini, deepseek, research (grounding + static), registry
   ui_contract/    catalog.json + catalog.schema.json + prompt.py + validator.py + vendored A2UI schemas
   mcp_servers/    in-process MCP servers (named to avoid shadowing the `mcp` SDK)
-    finance/      liabilities, income, subscriptions, cash flow, context
+    finance/      liabilities, income, subscriptions, cash flow, context, offers
+    savings/      saving bags: create, answers, research snapshots, feasibility
     ui/           persist, hydrate, a2ui_action, negotiation rounds + session context
     toolbox.py    Toolbox over in-memory mcp.Client + result normalization
-    # savings/, voice/ planned
+    # voice/ planned (M7)
   engine/         deterministic amortization, break detection, feasibility, planning adapter (pure, tested)
   hydration/      placeholder resolver + revalidation hook (pure, tested)
   db/             port.py, local_sqlite.py, schema.sql, schema.py, seed.py, sql_utils.py, init.py

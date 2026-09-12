@@ -9,25 +9,6 @@ from ui_contract.validator import (
     validate_messages,
 )
 
-M3_SUBSET = {
-    "Column",
-    "Row",
-    "Card",
-    "Text",
-    "Heading",
-    "Divider",
-    "Badge",
-    "Button",
-    "ChoiceGroup",
-    "Slider",
-    "DebtNode",
-    "TradeoffScale",
-    "BreakAlert",
-    "PlanTable",
-    "OfferCard",
-    "NegotiationTranscript",
-}
-
 SAMPLE = [
     {"version": "v0.9", "createSurface": {"surfaceId": "s", "catalogId": CATALOG_ID}},
     {
@@ -130,7 +111,7 @@ class JsonschemaValidationTest(unittest.TestCase):
     def test_relative_catalog_refs_resolve(self) -> None:
         schema = catalog_schema()
         self.assertEqual(schema["catalogId"], CATALOG_ID)
-        self.assertEqual(set(schema["components"]), M3_SUBSET)
+        self.assertEqual(set(schema["components"]), set(CATALOG.component_names()))
         # Validating SAMPLE exercises the relative `catalog.json` and
         # `common_types.json` refs; a resolution failure would surface here.
         self.assertTrue(self.validator.validate(SAMPLE).ok)

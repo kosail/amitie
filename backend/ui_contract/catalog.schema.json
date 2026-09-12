@@ -35,7 +35,12 @@
         { "$ref": "#/components/BreakAlert" },
         { "$ref": "#/components/PlanTable" },
         { "$ref": "#/components/OfferCard" },
-        { "$ref": "#/components/NegotiationTranscript" }
+        { "$ref": "#/components/NegotiationTranscript" },
+        { "$ref": "#/components/List" },
+        { "$ref": "#/components/ProgressBar" },
+        { "$ref": "#/components/TextField" },
+        { "$ref": "#/components/CashFlowTimeline" },
+        { "$ref": "#/components/GoalJar" }
       ]
     }
   },
@@ -360,6 +365,100 @@
             "rounds": { "type": "array", "items": { "type": "object" } }
           },
           "required": ["component", "rounds"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "List": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "List" },
+            "children": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ChildList" },
+            "ordered": { "type": "boolean" }
+          },
+          "required": ["component", "children"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "ProgressBar": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "ProgressBar" },
+            "value": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "max": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "label": { "type": "string" }
+          },
+          "required": ["component", "value"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "TextField": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "TextField" },
+            "label": { "type": "string" },
+            "value": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString" },
+            "placeholder": { "type": "string" },
+            "action": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/Action" }
+          },
+          "required": ["component", "label", "action"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "CashFlowTimeline": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "CashFlowTimeline" },
+            "points": {
+              "oneOf": [
+                { "type": "array", "items": { "type": "object" } },
+                { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DataBinding" }
+              ]
+            }
+          },
+          "required": ["component", "points"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "GoalJar": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "GoalJar" },
+            "label": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString" },
+            "current": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "target": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "action": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/Action" }
+          },
+          "required": ["component", "label", "current", "target"]
         }
       ],
       "unevaluatedProperties": false

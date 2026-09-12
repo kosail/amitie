@@ -19,6 +19,12 @@ PLAN_SECTION_ID = "plan-section"
 PLAN_TABLE_ID = "plan-table"
 BREAK_ALERT_ID = "break-alert"
 
+SAVINGS_SECTION_ID = "savings-section"
+GOAL_JAR_ID = "goal-jar"
+PROGRESS_BAR_ID = "progress-bar"
+CASH_FLOW_ID = "savings-cash-flow"
+SAVINGS_ALERT_ID = "savings-alert"
+
 _PLAN_SECTION_BINDINGS: dict[str, Any] = {
     "months": {"path": "/plan/months"},
     "breakMonth": {"path": "/plan/breakMonth"},
@@ -27,6 +33,17 @@ _BREAK_ALERT_BINDINGS: dict[str, Any] = {
     "month": {"path": "/plan/break/month"},
     "shortfall": {"path": "/plan/break/shortfall"},
 }
+_GOAL_JAR_BINDINGS: dict[str, Any] = {
+    "label": {"path": "/savings/bag/name"},
+    "current": {"path": "/savings/plan/currentSaved"},
+    "target": {"path": "/savings/plan/estimatedTotal"},
+}
+_PROGRESS_BAR_BINDINGS: dict[str, Any] = {
+    "value": {"path": "/savings/plan/fundedTarget"},
+    "max": {"path": "/savings/plan/estimatedTotal"},
+    "label": "Fondos proyectados",
+}
+_CASH_FLOW_BINDINGS: dict[str, Any] = {"points": {"path": "/cashFlow/months"}}
 
 
 def _index_of(components: list[dict[str, Any]], component_id: str) -> int | None:
@@ -114,10 +131,73 @@ def revalidate(
     return components
 
 
+def _apply_savings_section(
+    components: list[dict[str, Any]], savings: Mapping[str, Any]
+) -> None:
+    plan = savings.get("plan") or {}
+    feasibility = str(plan.get("feasibility") or "")
+
+    _upsert(components, {"id": GOAL_JAR_ID, "component": "GoalJar", **_GOAL_JAR_BINDINGS})
+    _upsert(
+        components,
+        {"id": PROGRESS_BAR_ID, "component": "ProgressBar", **_PROGRESS_BAR_BINDINGS},
+    )
+    _upsert(
+        components,
+        {"id": CASH_FLOW_ID, "component": "CashFlowTimeline", **_CASH_FLOW_BINDINGS},
+    )
+
+    section_children = [GOAL_JAR_ID, PROGRESS_BAR_ID, CASH_FLOW_ID]
+    if feasibility in ("at_risk", "off_track"):
+        _upsert(
+            components,
+            {
+                "id": SAVINGS_ALERT_ID,
+                "component": "Card",
+                "title": "Tu meta no alcanza en la fecha",
+                "tone": "danger" if feasibility == "off_track" else "warning",
+            },
+        )
+        section_children.append(SAVINGS_ALERT_ID)
+    else:
+        _remove(components, SAVINGS_ALERT_ID)
+
+    _upsert(
+        components,
+        {
+            "id": SAVINGS_SECTION_ID,
+            "component": "Column",
+            "children": section_children,
+            "gap": 12,
+        },
+    )
+
+    root = _root_column(components)
+    if root is not None:
+        children = root.get("children")
+        if not isinstance(children, list):
+            children = []
+        if SAVINGS_SECTION_ID not in children:
+            children.append(SAVINGS_SECTION_ID)
+        root["children"] = children
+
+
+def revalidate_savings(template: Any, savings: Mapping[str, Any] | None) -> Any:
+    if not savings or not isinstance(template, list):
+        return template
+    components = copy.deepcopy(template)
+    _apply_savings_section(components, savings)
+    return components
+
+
 def hydrate_components(
     template: Any,
     context: dict[str, Any],
     *,
     simulation: Mapping[str, Any] | None = None,
+    savings: Mapping[str, Any] | None = None,
 ) -> Any:
-    return revalidate(resolve_placeholders(template, context), context, simulation=simulation)
+    resolved = resolve_placeholders(template, context)
+    resolved = revalidate(resolved, context, simulation=simulation)
+    resolved = revalidate_savings(resolved, savings)
+    return resolved

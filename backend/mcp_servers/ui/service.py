@@ -16,6 +16,7 @@ from hydration.service import hydrate_components
 from ui_contract.validator import validate_messages
 
 from ..finance import service as finance_service
+from ..savings import service as savings_service
 
 _VERSION = "v0.9"
 
@@ -25,11 +26,15 @@ def _now() -> str:
 
 
 def _descriptor(
-    user_id: str, entity_id: str, simulation: dict[str, Any] | None
+    user_id: str,
+    domain: str,
+    entity_id: str,
+    simulation: dict[str, Any] | None,
 ) -> dict[str, Any]:
     descriptor: dict[str, Any] = {
         "user_id": user_id,
-        "context": "finance",
+        "context": "finance" if domain == "loans_credits" else domain,
+        "domain": domain,
         "entity_id": entity_id or None,
     }
     if simulation:
@@ -69,7 +74,7 @@ async def persist_ui(
             entity_id or None,
             catalog_id,
             json.dumps(components, ensure_ascii=False),
-            json.dumps(_descriptor(user_id, entity_id, simulation), ensure_ascii=False),
+            json.dumps(_descriptor(user_id, domain, entity_id, simulation), ensure_ascii=False),
             1,
             "user",
             now,
@@ -93,7 +98,7 @@ async def persist_ui(
 
 async def hydrate_ui(database: DatabasePort, surface_id: str) -> dict[str, Any]:
     row = await database.fetch_one(
-        "SELECT id, user_id, catalog_id, template_json, bindings_json, version "
+        "SELECT id, user_id, domain, entity_id, catalog_id, template_json, bindings_json, version "
         "FROM generated_ui WHERE id = ?",
         (surface_id,),
     )
@@ -102,9 +107,17 @@ async def hydrate_ui(database: DatabasePort, surface_id: str) -> dict[str, Any]:
 
     descriptor = json.loads(row["bindings_json"] or "{}")
     user_id = descriptor.get("user_id") or row["user_id"]
-    context = await finance_service.financial_context(database, user_id)
     stored = json.loads(row["template_json"])
-    components = hydrate_components(stored, context, simulation=descriptor.get("simulation"))
+    domain = descriptor.get("domain") or row["domain"]
+    context = await finance_service.financial_context(database, user_id)
+    savings = None
+    if domain == "saving_bag":
+        bag_id = descriptor.get("entity_id") or row["entity_id"]
+        savings = await savings_service.savings_snapshot(database, bag_id) if bag_id else None
+        context["savings"] = savings
+    components = hydrate_components(
+        stored, context, simulation=descriptor.get("simulation"), savings=savings
+    )
 
     version = row["version"]
     if json.dumps(components, sort_keys=True) != json.dumps(stored, sort_keys=True):

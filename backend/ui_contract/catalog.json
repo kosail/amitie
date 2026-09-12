@@ -1,7 +1,7 @@
 {
   "catalogId": "amitie.standard.v1",
   "version": "v0.9",
-  "description": "La Mesa standard catalog — M3 subset. Components are implemented by the frontend team. See A2UI_CATALOG.md for the human contract.",
+  "description": "La Mesa standard catalog — M3–M6 subset. Components are implemented by the frontend team. See A2UI_CATALOG.md for the human contract.",
   "messages": ["createSurface", "updateComponents", "updateDataModel", "deleteSurface"],
   "binding": {
     "syntax": "json-pointer",
@@ -14,7 +14,9 @@
     "approve_plan",
     "toggle_assumption",
     "take_control",
-    "accept_offer"
+    "accept_offer",
+    "refresh_bag",
+    "adjust_goal"
   ],
   "components": {
     "Column": {
@@ -143,6 +145,45 @@
       "required": ["rounds"],
       "props": {
         "rounds": "array"
+      }
+    },
+    "List": {
+      "required": ["children"],
+      "props": {
+        "children": "idArray",
+        "ordered": "boolean"
+      }
+    },
+    "ProgressBar": {
+      "required": ["value"],
+      "props": {
+        "value": "dynamicNumber",
+        "max": "dynamicNumber",
+        "label": "string"
+      }
+    },
+    "TextField": {
+      "required": ["label", "action"],
+      "props": {
+        "label": "string",
+        "value": "dynamicString",
+        "placeholder": "string",
+        "action": "action"
+      }
+    },
+    "CashFlowTimeline": {
+      "required": ["points"],
+      "props": {
+        "points": "any"
+      }
+    },
+    "GoalJar": {
+      "required": ["label", "current", "target"],
+      "props": {
+        "label": "dynamicString",
+        "current": "dynamicNumber",
+        "target": "dynamicNumber",
+        "action": "action"
       }
     }
   }

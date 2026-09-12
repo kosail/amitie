@@ -8,6 +8,7 @@ from config import Settings
 
 from .base import LLMProvider
 from .gateway import FallbackLLM
+from .research import FallbackResearch, ResearchProvider, StaticPriceTableResearch
 
 
 def build_llm(settings: Settings) -> LLMProvider:
@@ -40,3 +41,29 @@ def build_llm_gateway(settings: Settings, tracer: object | None = None) -> LLMPr
         tracer=tracer,  # type: ignore[arg-type]
         cooldown_seconds=settings.llm_failover_cooldown_seconds,
     )
+
+
+def _build_research_provider(settings: Settings, name: str) -> ResearchProvider:
+    if name in ("static_table", "static", "static_prices"):
+        return StaticPriceTableResearch()
+    if name == "gemini_grounding":
+        from .research import GeminiGroundingResearch
+
+        return GeminiGroundingResearch(
+            api_key=settings.gemini_api_key,
+            model=settings.gemini_model,
+            timeout_seconds=settings.research_timeout_seconds,
+        )
+    raise ValueError(f"unknown research provider: {name!r}")
+
+
+def build_research(settings: Settings) -> ResearchProvider:
+    provider_name = settings.research_provider
+    fallback_name = settings.research_fallback
+    if provider_name == "gemini_grounding" and not settings.gemini_api_key:
+        provider_name = fallback_name or "static_table"
+    primary = _build_research_provider(settings, provider_name)
+    if not fallback_name or fallback_name == provider_name:
+        return primary
+    fallback = _build_research_provider(settings, fallback_name)
+    return FallbackResearch(primary, fallback)

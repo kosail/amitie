@@ -55,3 +55,35 @@ class UiResponse(BaseModel):
 class TraceResponse(BaseModel):
     trace_id: str
     events: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class SavingBagCreateRequest(BaseModel):
+    user_id: str = "u_ana"
+    name: str
+    target_amount: float | None = None
+    target_date: str | None = None
+    session_id: str | None = None
+
+
+class SavingBagAnswerRequest(BaseModel):
+    user_id: str = "u_ana"
+    answers: list[dict[str, Any]] = Field(default_factory=list)
+    session_id: str | None = None
+
+
+class SavingBagRefreshRequest(BaseModel):
+    user_id: str = "u_ana"
+    session_id: str | None = None
+
+
+class SavingBagResponse(BaseModel):
+    status: str
+    bag_id: str | None = None
+    bag: dict[str, Any] | None = None
+    bags: list[dict[str, Any]] = Field(default_factory=list)
+    plan: dict[str, Any] | None = None
+    surface_id: str | None = None
+    a2ui: list[dict[str, Any]] = Field(default_factory=list)
+    assistant_text: str = ""
+    issues: list[str] = Field(default_factory=list)
+    message: str | None = None

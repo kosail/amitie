@@ -31,14 +31,14 @@
 
 ## 3. Saving Bags (SECONDARY CORE)
 
-- [ ] **REQ-BAG-01** — A user can create a saving bag by name.
-- [ ] **REQ-BAG-02** — The agent infers a question set from the bag name and emits it as a generated A2UI form (not a fixed questionnaire).
-- [ ] **REQ-BAG-03** — The system researches real average costs (e.g., flights and trip costs for a travel bag) via Gemini with Google Search grounding.
-- [ ] **REQ-BAG-04** — Research results are cached as an immutable snapshot in `saving_bag_research`; live research runs only on create/refresh.
-- [ ] **REQ-BAG-05** — If grounding fails or times out, a deterministic fallback price table produces the estimate.
-- [ ] **REQ-BAG-06** — The agent compares the researched estimated total against the user's declared goal and surfaces the gap.
-- [ ] **REQ-BAG-07** — The agent computes feasibility and a projected completion date from mocked financial reality (transactions, income trends, subscriptions, liabilities).
-- [ ] **REQ-BAG-08** — The saving-bag UI is persisted and can be re-fetched; re-fetching reflects updated data and may mutate the interface when financial reality changes.
+- [x] **REQ-BAG-01** — A user can create a saving bag by name.
+- [x] **REQ-BAG-02** — The agent infers a question set from the bag name and emits it as a generated A2UI form (not a fixed questionnaire).
+- [x] **REQ-BAG-03** — The system researches real average costs (e.g., flights and trip costs for a travel bag) via Gemini with Google Search grounding.
+- [x] **REQ-BAG-04** — Research results are cached as an immutable snapshot in `saving_bag_research`; live research runs only on create/refresh.
+- [x] **REQ-BAG-05** — If grounding fails or times out, a deterministic fallback price table produces the estimate.
+- [x] **REQ-BAG-06** — The agent compares the researched estimated total against the user's declared goal and surfaces the gap.
+- [x] **REQ-BAG-07** — The agent computes feasibility and a projected completion date from mocked financial reality (transactions, income trends, subscriptions, liabilities).
+- [x] **REQ-BAG-08** — The saving-bag UI is persisted and can be re-fetched; re-fetching reflects updated data and may mutate the interface when financial reality changes.
 
 ## 4. Voz y Color (automatic accessibility)
 
@@ -72,7 +72,7 @@
 - [ ] **REQ-API-02** `POST /api/message` — `{session_id, text|audio_b64}` → `{a2ui[], surface_id, audio_ref?}`
 - [ ] **REQ-API-03** `POST /api/action` — `{surface_id, name, source_component_id, context}` → `{a2ui[]}`
 - [ ] **REQ-API-04** `GET /api/ui/{surface_id}` — hydration + revalidation → `{a2ui[]}`
-- [ ] **REQ-API-05** Saving bags: `POST /api/saving-bags`, `GET /api/saving-bags[/{id}]`, `POST /api/saving-bags/{id}/answer`, `POST /api/saving-bags/{id}/refresh`
+- [x] **REQ-API-05** Saving bags: `POST /api/saving-bags`, `GET /api/saving-bags[/{id}]`, `POST /api/saving-bags/{id}/answer`, `POST /api/saving-bags/{id}/refresh`
 - [x] **REQ-API-06** `POST /api/negotiation/{session}/turn`, `POST /api/negotiation/{session}/take-control`
 - [ ] **REQ-API-07** `GET /api/audio/{asset_id}`
 - [ ] **REQ-API-08** `GET /debug/kill-test/{surface_id}`, `GET /debug/trace/{trace_id}`

@@ -64,6 +64,10 @@ class Settings:
     deepseek_model: str = "deepseek-flash"
     deepseek_thinking: bool = False
 
+    research_provider: str = "gemini_grounding"
+    research_fallback: str = "static_table"
+    research_timeout_seconds: float = 8.0
+
     agent_max_model_calls: int = 6
 
     @classmethod
@@ -81,5 +85,8 @@ class Settings:
             deepseek_base_url=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com").strip(),
             deepseek_model=os.environ.get("DEEPSEEK_MODEL", "deepseek-flash").strip(),
             deepseek_thinking=_as_bool("DEEPSEEK_THINKING", "0"),
+            research_provider=os.environ.get("RESEARCH_PROVIDER", "gemini_grounding").strip().lower(),
+            research_fallback=os.environ.get("RESEARCH_FALLBACK", "static_table").strip().lower(),
+            research_timeout_seconds=_as_float("RESEARCH_TIMEOUT_SECONDS", "8"),
             agent_max_model_calls=_as_int("AGENT_MAX_MODEL_CALLS", "6"),
         )

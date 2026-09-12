@@ -58,6 +58,8 @@ All five fields are required. Defined action names:
 | `toggle_assumption` | `AssumptionChip` | Edit an exposed assumption (Caja de Cristal) |
 | `take_control` | `Button` | User seizes the El Revés negotiation |
 | `accept_offer` | `OfferCard` | Accept a negotiated offer |
+| `refresh_bag` | `Button` | Re-run research and recompute a saving bag |
+| `adjust_goal` | `Slider`, `TextField` | Change a saving-bag goal amount |
 
 ## 5. Component catalog — primitives
 
@@ -71,7 +73,7 @@ All five fields are required. Defined action names:
 | `Heading` | `text: string`, `level?: 1\|2\|3` |
 | `Divider` | `{}` |
 | `Badge` | `label: string`, `tone?: "neutral"\|"positive"\|"warning"\|"danger"` |
-| `ProgressBar` | `value: number \| binding`, `max?: number`, `label?: string` |
+| `ProgressBar` | `value: number \| binding`, `max?: number \| binding`, `label?: string` |
 | `Button` | `label: string`, `variant?: "primary"\|"secondary"\|"ghost"\|"danger"`, `action: Action` |
 | `ChoiceGroup` | `options: { value: string, label: string, description?: string }[]`, `value: string \| binding`, `multiple?: boolean`, `action: Action` |
 | `Slider` | `min: number`, `max: number`, `step?: number`, `value: number \| binding`, `label?: string`, `action: Action` |
@@ -92,7 +94,7 @@ All five fields are required. Defined action names:
 | `OfferCard` | `actor: "bank"\|"advocate"`, `headline: string`, `terms: { apr: number, months: number, monthlyPayment: number, totalCost: number }`, `action: Action` |
 | `NegotiationTranscript` | `rounds: { round: number, actor: string, summary: string }[]` |
 | `QuincenaGauge` | `value: number \| binding`, `min: number`, `max: number`, `label?: string` |
-| `GoalJar` | `label: string`, `current: number \| binding`, `target: number \| binding`, `action?: Action` |
+| `GoalJar` | `label: string \| binding`, `current: number \| binding`, `target: number \| binding`, `action?: Action` |
 
 ## 7. Persistence, placeholders, and revalidation
 
@@ -108,6 +110,7 @@ Required by milestone:
 - **M3:** `Column`, `Row`, `Card`, `Text`, `Heading`, `Divider`, `Badge`, `Button`, `ChoiceGroup`, `Slider`, `DebtNode`, `TradeoffScale`.
 - **M4 (added):** `BreakAlert`, `PlanTable`.
 - **M5 (added):** `OfferCard`, `NegotiationTranscript`.
+- **M6 (added):** `List`, `ProgressBar`, `TextField`, `CashFlowTimeline`, `GoalJar`.
 
 Everything else in §6 is reserved for later milestones and must not be emitted until the frontend confirms support. Adding components is additive (see §10), so the catalog ID remains `amitie.standard.v1`.
 

@@ -19,14 +19,15 @@ from config import Settings, load_dotenv
 from db.local_sqlite import LocalSQLiteDatabase
 from db.schema import apply_schema
 from mcp_servers.finance.server import build_finance_server
+from mcp_servers.savings.server import build_savings_server
 from mcp_servers.toolbox import InProcessToolbox
 from mcp_servers.ui.server import build_ui_server
 from observability.middleware import TraceMiddleware
 from observability.tracing import Tracer
 from providers.base import LLMProvider
-from providers.registry import build_llm_gateway
+from providers.registry import build_llm_gateway, build_research
 
-from .routers import action, debug, message, negotiation, session, ui
+from .routers import action, debug, message, negotiation, saving_bags, session, ui
 
 
 def create_app(
@@ -40,9 +41,11 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await apply_schema(database)
+        research = build_research(resolved)
         toolbox = InProcessToolbox(
             {
                 "finance": build_finance_server(database),
+                "savings": build_savings_server(database, research),
                 "ui": build_ui_server(database),
             }
         )
@@ -64,6 +67,7 @@ def create_app(
         app.state.database = database
         app.state.tracer = tracer
         app.state.toolbox = toolbox
+        app.state.research = research
         app.state.agent_service = agent_service
         app.state.negotiation_service = negotiation_service
         try:
@@ -82,6 +86,7 @@ def create_app(
     app.include_router(message.router)
     app.include_router(action.router)
     app.include_router(negotiation.router)
+    app.include_router(saving_bags.router)
     app.include_router(ui.router)
     app.include_router(debug.router)
 

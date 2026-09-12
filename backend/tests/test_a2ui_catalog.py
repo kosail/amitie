@@ -7,7 +7,7 @@ from ui_contract.validator import CatalogValidator, SdkValidator
 
 CONTRACT_PATH = Path(__file__).resolve().parents[2] / "A2UI_CATALOG.md"
 
-M3_SUBSET = {
+SHIPPED_SUBSET = {
     "Column",
     "Row",
     "Card",
@@ -24,6 +24,11 @@ M3_SUBSET = {
     "PlanTable",
     "OfferCard",
     "NegotiationTranscript",
+    "List",
+    "ProgressBar",
+    "TextField",
+    "CashFlowTimeline",
+    "GoalJar",
 }
 
 VALID_PAYLOAD = [
@@ -82,8 +87,8 @@ class CatalogContractTest(unittest.TestCase):
     def test_catalog_id(self) -> None:
         self.assertEqual(CATALOG_ID, "amitie.standard.v1")
 
-    def test_component_set_matches_m3_subset(self) -> None:
-        self.assertEqual(set(CATALOG.component_names()), M3_SUBSET)
+    def test_component_set_matches_shipped_subset(self) -> None:
+        self.assertEqual(set(CATALOG.component_names()), SHIPPED_SUBSET)
 
     def test_subset_documented_in_contract(self) -> None:
         contract = CONTRACT_PATH.read_text(encoding="utf-8")

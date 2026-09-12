@@ -16,19 +16,32 @@ from .base import (
     Usage,
 )
 from .gateway import FallbackLLM
-from .registry import build_llm, build_llm_gateway
+from .registry import build_llm, build_llm_gateway, build_research
+from .research import (
+    FallbackResearch,
+    GeminiGroundingResearch,
+    ResearchProvider,
+    ResearchSnapshot,
+    StaticPriceTableResearch,
+)
 
 __all__ = [
     "ChatMessage",
     "FallbackLLM",
+    "FallbackResearch",
+    "GeminiGroundingResearch",
     "LLMProvider",
     "LLMResult",
     "ProviderError",
     "ProviderResponseError",
     "ProviderUnavailableError",
+    "ResearchProvider",
+    "ResearchSnapshot",
+    "StaticPriceTableResearch",
     "ToolCall",
     "ToolSpec",
     "Usage",
     "build_llm",
     "build_llm_gateway",
+    "build_research",
 ]

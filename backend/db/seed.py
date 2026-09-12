@@ -194,9 +194,12 @@ def build_seed_statements() -> list[tuple[str, tuple]]:
                 "u_ana",
                 "loans_credits",
                 None,
-                "standard",
-                '{"id":"root","component":{"Column":{"children":["balance","break-alert"]}}}',
-                '{"balance":"{{finance.total_debt}}"}',
+                "amitie.standard.v1",
+                '[{"id":"root","component":"Column","children":["title","plan-table"],"gap":12},'
+                '{"id":"title","component":"Heading","text":"Tu plan","level":1},'
+                '{"id":"plan-table","component":"PlanTable","months":{"path":"/plan/months"},'
+                '"breakMonth":{"path":"/plan/breakMonth"}}]',
+                '{"user_id":"u_ana","context":"finance","simulation":{"strategy":"avalanche"}}',
                 1,
                 "user",
                 NOW,
