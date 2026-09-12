@@ -28,7 +28,7 @@ from ..dependencies import (
     get_tracer,
     get_tts,
 )
-from ..schemas import ProviderHealth, ProvidersResponse, TraceResponse, UiResponse
+from ..schemas import HttpErrorDetail, ProviderHealth, ProvidersResponse, TraceResponse, UiResponse
 
 router = APIRouter(tags=["debug"])
 
