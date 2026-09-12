@@ -59,6 +59,7 @@ def _descriptor(
     voice_id: str = "",
     speed: float = 1.0,
     data_model: dict[str, Any] | None = None,
+    audience: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     descriptor: dict[str, Any] = {
         "user_id": user_id,
@@ -67,6 +68,8 @@ def _descriptor(
         "entity_id": entity_id or None,
         "accessible": accessible,
     }
+    if audience:
+        descriptor["audience"] = audience
     if simulation:
         descriptor["simulation"] = simulation
     if data_model:
@@ -89,6 +92,8 @@ async def _render(
     snapshot = descriptor.get("data_model")
     if isinstance(snapshot, dict) and snapshot:
         context = {**snapshot, **context}
+    if isinstance(descriptor.get("audience"), dict):
+        context["audience"] = descriptor["audience"]
 
     audio_ref = ""
     if descriptor.get("accessible"):
@@ -127,6 +132,7 @@ async def persist_ui(
 ) -> dict[str, Any]:
     profile = await _accessibility_profile(database, user_id)
     accessible = profile is not None
+    audience = await finance_service.get_audience(database, user_id)
     # INV-003: accessible mode is automatic, never a caller choice.
     pinned_catalog = VOZ_COLOR_ID if accessible else CATALOG_ID
     spoken = (speech or "").strip()
@@ -154,6 +160,7 @@ async def persist_ui(
         voice_id=(profile or {}).get("voice_id", ""),
         speed=(profile or {}).get("speed", 1.0),
         data_model=data_model,
+        audience=audience,
     )
     await database.execute(
         "INSERT INTO generated_ui (id, user_id, domain, entity_id, catalog_id, template_json, "

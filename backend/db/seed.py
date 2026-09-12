@@ -22,6 +22,9 @@ NOW = "2026-09-12T12:00:00Z"
 _DEMO_PASSWORD = "demo1234"
 _ANA_PASSWORD_HASH, _ANA_PASSWORD_SALT = hash_password(_DEMO_PASSWORD, salt="seed-salt-u-ana")
 _DON_PASSWORD_HASH, _DON_PASSWORD_SALT = hash_password(_DEMO_PASSWORD, salt="seed-salt-u-don")
+_SOFIA_PASSWORD_HASH, _SOFIA_PASSWORD_SALT = hash_password(_DEMO_PASSWORD, salt="seed-salt-u-sofia")
+_CARMEN_PASSWORD_HASH, _CARMEN_PASSWORD_SALT = hash_password(_DEMO_PASSWORD, salt="seed-salt-u-carmen")
+_ROBERTO_PASSWORD_HASH, _ROBERTO_PASSWORD_SALT = hash_password(_DEMO_PASSWORD, salt="seed-salt-u-roberto")
 
 Columns = Sequence[str]
 Rows = Iterable[Sequence[Any]]
@@ -31,6 +34,63 @@ def _inserts(table: str, columns: Columns, rows: Rows) -> list[tuple[str, tuple]
     placeholders = ", ".join("?" for _ in columns)
     sql = f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({placeholders})"
     return [(sql, tuple(row)) for row in rows]
+
+
+def _txn_rows(
+    user_id: str,
+    account_id: str,
+    *,
+    rng_seed: int,
+    months: range,
+    deposits: list[tuple[int, float, str]],
+    fixed: list[tuple[int, float, str, str]],
+    variable: list[tuple[str, int, float, float, list[str]]],
+    subscriptions: list[tuple[int, float, str]] = (),
+) -> list[tuple]:
+    """Deterministic per-month transaction stream for a persona.
+
+    deposits:    (day, amount, merchant) per month
+    fixed:       (day, amount, category, merchant) per month
+    variable:    (category, times, low, high, merchants) per month
+    subscriptions: (day, amount, merchant) per month
+    """
+    rng = random.Random(rng_seed)
+    rows: list[tuple] = []
+    counter = 0
+
+    def add(month: int, day: int, amount: float, direction: str, category: str, merchant: str, sub: int) -> None:
+        nonlocal counter
+        counter += 1
+        try:
+            occurred = date(2026, month, day)
+        except ValueError:
+            occurred = date(2026, month, 28)
+        rows.append(
+            (
+                f"t_{user_id[2:]}_{counter:04d}",
+                user_id,
+                account_id,
+                occurred.isoformat(),
+                round(amount, 2),
+                direction,
+                category,
+                merchant,
+                sub,
+            )
+        )
+
+    for month in months:
+        for day, amount, merchant in deposits:
+            add(month, day, amount, "in", "nomina", merchant, 0)
+        for day, amount, category, merchant in fixed:
+            add(month, day, amount, "out", category, merchant, 0)
+        for category, times, low, high, merchants in variable:
+            for _ in range(times):
+                add(month, rng.randint(2, 27), rng.uniform(low, high), "out", category, rng.choice(merchants), 0)
+        for day, amount, merchant in subscriptions:
+            add(month, day, amount, "out", "suscripcion", merchant, 1)
+
+    return rows
 
 
 def _transaction_rows() -> list[tuple]:
@@ -76,6 +136,57 @@ def _transaction_rows() -> list[tuple]:
     return rows
 
 
+def _new_persona_transactions() -> list[tuple]:
+    rows: list[tuple] = []
+
+    rows += _txn_rows(
+        "u_sofia",
+        "a_sofia_nom",
+        rng_seed=21,
+        months=range(4, 10),
+        deposits=[(1, 14000.0, "Nómina Nubank")],
+        fixed=[(2, 4500.0, "renta", "Renta")],
+        variable=[
+            ("despensa", 2, 600.0, 900.0, ["Soriana", "Walmart"]),
+            ("transporte", 2, 250.0, 450.0, ["Uber", "Metro"]),
+            ("restaurantes", 2, 200.0, 400.0, ["Tacos", "Café"]),
+        ],
+        subscriptions=[(8, 129.0, "Spotify")],
+    )
+
+    rows += _txn_rows(
+        "u_carmen",
+        "a_carmen_nom",
+        rng_seed=22,
+        months=range(4, 10),
+        deposits=[(30, 11000.0, "Sueldo HSBC")],
+        fixed=[(3, 3500.0, "renta", "Renta")],
+        variable=[
+            ("despensa", 3, 400.0, 700.0, ["Soriana", "Chedraui", "Mercado"]),
+            ("transporte", 2, 150.0, 300.0, ["Metro", "Colectivo"]),
+            ("restaurantes", 1, 150.0, 300.0, ["Fonda", "Tacos"]),
+        ],
+        subscriptions=[(6, 250.0, "Telcel")],
+    )
+
+    rows += _txn_rows(
+        "u_roberto",
+        "a_roberto_nom",
+        rng_seed=23,
+        months=range(4, 10),
+        deposits=[(1, 65000.0, "Nómina BBVA")],
+        fixed=[(5, 18000.0, "hipoteca", "Hipoteca BBVA")],
+        variable=[
+            ("despensa", 4, 1800.0, 3200.0, ["HEB", "Soriana", "La Comer"]),
+            ("transporte", 3, 800.0, 1500.0, ["Uber", "Gasolina"]),
+            ("restaurantes", 3, 600.0, 1200.0, ["Sushi", "Café", "Tacos"]),
+        ],
+        subscriptions=[(5, 219.0, "Netflix"), (8, 129.0, "Spotify"), (10, 899.0, "Smart Fit")],
+    )
+
+    return rows
+
+
 def build_seed_statements() -> list[tuple[str, tuple]]:
     statements: list[tuple[str, tuple]] = []
 
@@ -89,6 +200,7 @@ def build_seed_statements() -> list[tuple[str, tuple]]:
             "monthly_income",
             "pay_frequency",
             "credit_score",
+            "education_level",
             "created_at",
             "username",
             "password_hash",
@@ -103,6 +215,7 @@ def build_seed_statements() -> list[tuple[str, tuple]]:
                 19000.0,
                 "quincenal",
                 640,
+                "licenciatura",
                 NOW,
                 "demo",
                 _ANA_PASSWORD_HASH,
@@ -116,10 +229,53 @@ def build_seed_statements() -> list[tuple[str, tuple]]:
                 7200.0,
                 "mensual",
                 590,
+                "primaria",
                 NOW,
                 "accesible",
                 _DON_PASSWORD_HASH,
                 _DON_PASSWORD_SALT,
+            ),
+            (
+                "u_sofia",
+                "Sofía Ramírez",
+                26,
+                "Guadalajara",
+                14000.0,
+                "mensual",
+                700,
+                "tecnico",
+                NOW,
+                "sofia",
+                _SOFIA_PASSWORD_HASH,
+                _SOFIA_PASSWORD_SALT,
+            ),
+            (
+                "u_carmen",
+                "Carmen Ruiz",
+                58,
+                "Mérida",
+                11000.0,
+                "mensual",
+                615,
+                "secundaria",
+                NOW,
+                "carmen",
+                _CARMEN_PASSWORD_HASH,
+                _CARMEN_PASSWORD_SALT,
+            ),
+            (
+                "u_roberto",
+                "Roberto Díaz",
+                45,
+                "Monterrey",
+                65000.0,
+                "mensual",
+                760,
+                "maestria",
+                NOW,
+                "roberto",
+                _ROBERTO_PASSWORD_HASH,
+                _ROBERTO_PASSWORD_SALT,
             ),
         ],
     )
@@ -131,6 +287,10 @@ def build_seed_statements() -> list[tuple[str, tuple]]:
             ("a_ana_nom", "u_ana", "checking", "BBVA", 8500.0, "MXN"),
             ("a_ana_ahorro", "u_ana", "savings", "BBVA", 3000.0, "MXN"),
             ("a_don_nom", "u_don", "checking", "Banorte", 2100.0, "MXN"),
+            ("a_sofia_nom", "u_sofia", "checking", "Nubank", 6500.0, "MXN"),
+            ("a_carmen_nom", "u_carmen", "checking", "HSBC", 1800.0, "MXN"),
+            ("a_roberto_nom", "u_roberto", "checking", "BBVA", 85000.0, "MXN"),
+            ("a_roberto_inv", "u_roberto", "savings", "BBVA", 250000.0, "MXN"),
         ],
     )
 
@@ -140,6 +300,9 @@ def build_seed_statements() -> list[tuple[str, tuple]]:
         [
             ("i_ana", "u_ana", "Nómina", 9500.0, "quincenal", "2026-09-15"),
             ("i_don", "u_don", "Pensión", 7200.0, "mensual", "2026-10-01"),
+            ("i_sofia", "u_sofia", "Nómina", 14000.0, "mensual", "2026-10-01"),
+            ("i_carmen", "u_carmen", "Sueldo", 11000.0, "mensual", "2026-09-30"),
+            ("i_roberto", "u_roberto", "Nómina", 65000.0, "mensual", "2026-10-01"),
         ],
     )
 
@@ -151,6 +314,11 @@ def build_seed_statements() -> list[tuple[str, tuple]]:
             ("s_spotify", "u_ana", "Spotify", 129.0, "mensual", "2026-10-08"),
             ("s_gym", "u_ana", "Smart Fit", 599.0, "mensual", "2026-10-10"),
             ("s_tel", "u_don", "Telcel", 200.0, "mensual", "2026-10-02"),
+            ("s_sofia_spotify", "u_sofia", "Spotify", 129.0, "mensual", "2026-10-08"),
+            ("s_carmen_telcel", "u_carmen", "Telcel", 250.0, "mensual", "2026-10-06"),
+            ("s_roberto_netflix", "u_roberto", "Netflix", 219.0, "mensual", "2026-10-05"),
+            ("s_roberto_spotify", "u_roberto", "Spotify", 129.0, "mensual", "2026-10-08"),
+            ("s_roberto_gym", "u_roberto", "Smart Fit", 899.0, "mensual", "2026-10-10"),
         ],
     )
 
@@ -163,6 +331,10 @@ def build_seed_statements() -> list[tuple[str, tuple]]:
             ("l_nomina", "u_ana", "BBVA", "payroll_loan", 40000.0, 35000.0, 0.28, 1800.0, 15, 1800.0, "active"),
             ("l_personal", "u_ana", "Kueski", "personal_loan", 18000.0, 15000.0, 0.35, 1100.0, 20, 0.0, "active"),
             ("l_electronica", "u_ana", "Elektra", "store_credit", 9000.0, 7200.0, 0.62, 700.0, 8, 0.0, "active"),
+            ("l_sofia_tdc", "u_sofia", "Nubank", "credit_card", 12000.0, 9500.0, 0.44, 650.0, 10, 0.0, "active"),
+            ("l_carmen_tdc", "u_carmen", "HSBC", "credit_card", 20000.0, 16500.0, 0.52, 1100.0, 7, 0.0, "active"),
+            ("l_carmen_elektra", "u_carmen", "Elektra", "store_credit", 6000.0, 4200.0, 0.60, 420.0, 15, 0.0, "active"),
+            ("l_roberto_auto", "u_roberto", "BBVA", "auto_loan", 240000.0, 128000.0, 0.16, 5200.0, 20, 0.0, "active"),
         ],
     )
 
@@ -262,7 +434,7 @@ def build_seed_statements() -> list[tuple[str, tuple]]:
     statements += _inserts(
         "transactions",
         ("id", "user_id", "account_id", "occurred_on", "amount", "direction", "category", "merchant", "is_subscription"),
-        _transaction_rows(),
+        _transaction_rows() + _new_persona_transactions(),
     )
 
     history: list[tuple] = []
@@ -272,6 +444,10 @@ def build_seed_statements() -> list[tuple[str, tuple]]:
         "l_nomina": ["on_time"] * 6,
         "l_personal": ["on_time"] * 5 + ["late"],
         "l_electronica": ["on_time"] * 4 + ["late", "missed"],
+        "l_sofia_tdc": ["on_time"] * 6,
+        "l_carmen_tdc": ["on_time"] * 4 + ["late", "on_time"],
+        "l_carmen_elektra": ["on_time"] * 3 + ["late"] * 2 + ["on_time"],
+        "l_roberto_auto": ["on_time"] * 6,
     }
     amounts = {
         "l_bbva_tdc": 2900.0,
@@ -279,6 +455,10 @@ def build_seed_statements() -> list[tuple[str, tuple]]:
         "l_nomina": 1800.0,
         "l_personal": 1100.0,
         "l_electronica": 700.0,
+        "l_sofia_tdc": 650.0,
+        "l_carmen_tdc": 1100.0,
+        "l_carmen_elektra": 420.0,
+        "l_roberto_auto": 5200.0,
     }
     counter = 0
     for liability_id, status_list in statuses.items():

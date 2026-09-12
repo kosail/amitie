@@ -88,12 +88,12 @@ Root documents: `AGENTS.md`, `INVARIANTS.md`, `SPECS.md`, `CHANGELOG.md`, and `A
   providers/      base interfaces + gemini, deepseek, research (grounding + static), voice (TTS: elevenlabs/edge-tts; STT: gemini/faster-whisper/speech_recognition), piper + masking (PR_SWITCH), registry
   ui_contract/    catalog.json + voz_color.json + *.schema.json + prompt.py + validator.py + vendored A2UI schemas
   mcp_servers/    in-process MCP servers (named to avoid shadowing the `mcp` SDK)
-    finance/      liabilities, income, subscriptions, cash flow, context, offers
+    finance/      liabilities, income, subscriptions, cash flow, context, offers, audience
     savings/      STAGED (PENDING TO BE RELEASED) — not wired into the app
     ui/           persist (+ freeze), hydrate, kill_test, a2ui_action, negotiation rounds + session context
     voice/        TTS synthesis (cached) + STT transcription
     toolbox.py    Toolbox over in-memory mcp.Client + result normalization
-  engine/         deterministic amortization, break detection, feasibility, planning adapter (pure, tested)
+  engine/         deterministic amortization, break detection, feasibility, planning adapter, audience classifier (pure, tested)
   hydration/      placeholder resolver + revalidation (plan/assumptions) (pure, tested)
   db/             port.py, local_sqlite.py, schema.sql, schema.py (idempotent column migration), seed.py, sql_utils.py, init.py
   tests/          persistence, engine, observability, provider, and A2UI contract tests

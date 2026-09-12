@@ -77,6 +77,7 @@
 - [x] **REQ-API-08b** Loans: `POST /api/loans/greeting` (personalized intro audio + session) and `POST /api/loans/consult` (`{session_id, text|audio_b64, loan_request_id?}`) both return **`multipart/form-data`** (`payload` JSON part + `audio` mp3 part; `{response_text, confidence, terminal_response}`); `GET /api/loans/{loan_request_id}` returns the hydrated terminal UI as JSON. See `LOANS_CONSULT_GUIDE.md`.
 - [x] **REQ-API-08c** `POST /api/loans` — create the offered loan **only on explicit user action** (`{user_id, amount, months?, loan_request_id?}`), validated against the stored offer, inserting the `loans` row and disbursing atomically. The terminal generation never creates a loan.
 - [x] **REQ-LM-10** — The loans consult returns a deterministic, engine-backed offer: backend-proposed amount (affordability), terms, IRR-based CAT, per-month schedule, and a risk panel (DTI, surplus, liquidity buffer, relative cost, income stability, payroll deduction, savings-goal delay, payment history), surfaced via a required `LoanOffer` component carrying a numeric `amount`.
+- [x] **REQ-LM-11** — Audience adaptation: a deterministic classifier (`engine/audience.py`) derives `simple|standard|detailed` from age, accessibility mode, last obtained degree (`users.education_level`) and real financial activity; the loans consult and La Mesa both adapt interface complexity to its Spanish `directive`, and every persisted surface exposes it at `/audience`. `LoanOffer.amount` stays mandatory at every level.
 
 > **Diagnostics — not part of this frozen contract, and not for frontend use.** The frontend must not depend on `GET /debug/trace/{trace_id}`, `GET /debug/kill-test/{surface_id}`, `GET /debug/providers`, `POST /debug/stt`, or `POST /debug/tts`. They are developer tools and are disabled when `ENABLE_DEBUG_ENDPOINTS=0`.
 
@@ -121,7 +122,7 @@ Added 2026-09-12, alongside the §9 finance contract note, for the native login 
 - [x] **REQ-AUTH-01** — `POST /api/login` verifies a username + password against the `users` table (`username`, `password_hash`, `password_salt` columns) and returns `{session_id, user_id, username, accessibility_mode}` on success.
 - [x] **REQ-AUTH-02** — Passwords are never stored or logged in plaintext; hashing is PBKDF2-HMAC-SHA256 with a random per-user salt (`backend/auth/passwords.py`), stdlib-only (no new dependency).
 - [x] **REQ-AUTH-03** — An unknown username or an incorrect password both return `401` with the same generic message (no username enumeration).
-- [x] **REQ-AUTH-04** — The two seeded personas (`u_ana`/`u_don`) each get a real, fixed demo login (`demo`/`demo1234` and `accesible`/`demo1234`) via deterministic, fixed-salt seed hashes (`db/seed.py`) so `python -m db.init` stays reproducible (REQ-DATA-02).
+- [x] **REQ-AUTH-04** — The seeded personas (`u_ana`, `u_don`, `u_sofia`, `u_carmen`, `u_roberto`) each get a real, fixed demo login (`demo`, `accesible`, `sofia`, `carmen`, `roberto`; password `demo1234` for all) via deterministic, fixed-salt seed hashes (`db/seed.py`) so `python -m db.init` stays reproducible (REQ-DATA-02). The five profiles span the three audience levels (`detailed`/`standard`/`simple`) and both catalogs (standard and voz-color) to showcase different generated UIs (REQ-LM-11).
 
 ## 13. Real transfers (native screen extension)
 

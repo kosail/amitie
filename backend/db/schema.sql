@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
     monthly_income REAL,
     pay_frequency TEXT,
     credit_score INTEGER,
+    education_level TEXT,
     created_at TEXT NOT NULL,
     username TEXT,
     password_hash TEXT,

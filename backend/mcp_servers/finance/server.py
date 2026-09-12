@@ -23,6 +23,13 @@ def build_finance_server(database: DatabasePort, settings: Any | None = None) ->
         return {"profile": await service.get_profile(database, user_id)}
 
     @server.tool()
+    async def get_audience(user_id: str) -> dict[str, Any]:
+        """Return the user's audience level (simple/standard/detailed), derived from
+        age, accessibility, education and real financial activity. The agent must
+        adapt the interface complexity to this directive."""
+        return {"audience": await service.get_audience(database, user_id)}
+
+    @server.tool()
     async def get_liabilities(user_id: str) -> dict[str, Any]:
         """Return the user's liabilities with totals, ordered by balance descending."""
         items = await service.get_liabilities(database, user_id)

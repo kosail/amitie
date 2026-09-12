@@ -33,6 +33,8 @@ async def _ensure_columns(database: DatabasePort) -> None:
         await database.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
     if "password_salt" not in user_columns:
         await database.execute("ALTER TABLE users ADD COLUMN password_salt TEXT")
+    if "education_level" not in user_columns:
+        await database.execute("ALTER TABLE users ADD COLUMN education_level TEXT")
     await database.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)"
     )

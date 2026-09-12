@@ -32,7 +32,8 @@ Components use the A2UI v0.9 **flat adjacency-list** model: a flat list where ea
 ## 3. Data binding
 
 - Any prop value may be a literal or a JSON-Pointer binding: `{ "path": "/liabilities/0/balance" }`.
-- Bindings resolve against the surface data model updated by `updateDataModel`. The data model root holds the domain keys directly — `profile`, `liabilities`, `totals`, `incomeStreams`, `subscriptions`, `subscriptionTotal`, `cashFlow`, `plan`, `speech` — with no `/finance` wrapper.
+- Bindings resolve against the surface data model updated by `updateDataModel`. The data model root holds the domain keys directly — `profile`, `liabilities`, `totals`, `incomeStreams`, `subscriptions`, `subscriptionTotal`, `cashFlow`, `plan`, `speech`, `audience` — with no `/finance` wrapper.
+- `audience` is a backend-computed `{level: simple|standard|detailed, ...}` object describing how simple the UI must be for this user (age, accessibility, education, activity). The LLM adapts to it; the frontend may use it to adjust density. It never substitutes for the required `LoanOffer.amount`.
 - The backend never embeds a literal financial value in a persisted template; it uses bindings or `{{...}}` placeholders (see §7).
 
 ## 4. Actions

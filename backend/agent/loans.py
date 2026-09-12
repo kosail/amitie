@@ -161,55 +161,86 @@ class LoansConsultService:
         self._toolbox = toolbox
         self._tracer = tracer
 
-    def _system_prompt(self) -> str:
+    def _system_prompt(self, audience: dict[str, Any] | None = None) -> str:
         bank = load_bank_context()
-        return "\n".join(
-            [
-                "Eres La Mesa, un asesor de crédito para usuarios en México. Hablas en español (es-MX).",
-                "Tu objetivo es entender la necesidad del usuario y, cuando tengas suficiente "
-                "contexto, proponer una interfaz A2UI. Nunca calcules amortizaciones tú mismo.",
-                "",
-                "CONTEXTO DEL BANCO:",
-                bank or "(sin contexto bancario configurado; responde de forma conservadora)",
-                "",
-                "Si necesitas más información, pregunta y devuelve terminal_response = null.",
-                "Solo genera terminal_response cuando la confianza sea mayor a 0.80.",
-                "En los componentes usa placeholders {{dot.path}} para datos importantes "
-                "(por ejemplo {{analysis.scenarios.1.interestSaved}}) y coloca sus valores en data_model.",
-                "",
-                "MANDATO DE VALOR (obligatorio). Recibirás un 'Analisis determinista' con cifras "
-                "reales del usuario. NO produzcas paneles genéricos:",
+        level = str((audience or {}).get("level") or "standard")
+        directive = str((audience or {}).get("directive") or "")
+        lines = [
+            "Eres La Mesa, un asesor de crédito para usuarios en México. Hablas en español (es-MX).",
+            "Tu objetivo es entender la necesidad del usuario y, cuando tengas suficiente "
+            "contexto, proponer una interfaz A2UI. Nunca calcules amortizaciones tú mismo.",
+            "",
+            "CONTEXTO DEL BANCO:",
+            bank or "(sin contexto bancario configurado; responde de forma conservadora)",
+            "",
+            "Si necesitas más información, pregunta y devuelve terminal_response = null.",
+            "Solo genera terminal_response cuando la confianza sea mayor a 0.80.",
+            "En los componentes usa placeholders {{dot.path}} para datos importantes "
+            "(por ejemplo {{analysis.scenarios.1.interestSaved}}) y coloca sus valores en data_model.",
+            "",
+        ]
+        if directive:
+            lines += ["ADAPTACIÓN DE AUDIENCIA (obligatoria): " + directive, ""]
+        lines += [
+            "MANDATO DE VALOR (obligatorio). Recibirás un 'Analisis determinista' con cifras "
+            "reales del usuario. NO produzcas paneles genéricos:",
+        ]
+        if level == "simple":
+            lines += [
+                "- Máximo DOS secciones; lenguaje llano, frases cortas y números grandes.",
+                "- Incluye SIEMPRE LoanOffer con {{loan.amount}} y {{loan.monthlyPayment}}.",
+                "- Muestra el calendario de pagos de forma simple (PlanTable con pocas filas).",
+                "- NO incluyas CAT, DTI, panel de riesgo ni ScenarioComparison.",
+                "- Di en una frase qué crédito atacar primero, sin tasas técnicas.",
+                "- El response_text debe abrir con el monto y el pago mensual, en palabras simples.",
+            ]
+        elif level == "detailed":
+            lines += [
+                "- Incluye SIEMPRE ScenarioComparison con el plan base y al menos un plan "
+                "acelerado, mostrando interés ahorrado y meses ahorrados.",
+                "- Di qué crédito atacar primero citando acreedor y tasa (highCost/nextBestAction).",
+                "- Propón una acción concreta con monto y efecto medido (nextBestAction).",
+                "- Menciona la carga de suscripciones y la presión por quincena cuando sean relevantes.",
+                "- Usa el pronóstico/orden de pago reales (payoffOrder) en PlanTable/ForecastChart/LineChart.",
+                "- Añade CAT, DTI y el panel de riesgo completo.",
+                "- Incluye gráficas (ForecastChart/LineChart) y el calendario completo.",
+                "- El response_text debe abrir con el hallazgo más importante y específico del usuario.",
+            ]
+        else:
+            lines += [
                 "- Incluye SIEMPRE el componente ScenarioComparison con el plan base y al menos un "
                 "plan acelerado, mostrando interés ahorrado y meses ahorrados.",
                 "- Di qué crédito atacar primero citando acreedor y tasa (highCost/nextBestAction).",
                 "- Propón una acción concreta con monto y efecto medido (nextBestAction).",
                 "- Menciona la carga de suscripciones y la presión por quincena cuando sean relevantes.",
                 "- Usa el pronóstico/orden de pago reales (payoffOrder) en PlanTable/ForecastChart/LineChart.",
-                "- Todos los datos deben derivarse del comportamiento y las tendencias del usuario; "
-                "prohibido inventar cifras o dar consejos genéricos.",
                 "- El response_text debe abrir con el hallazgo más importante y específico del usuario.",
-                "",
-                "OFERTA DE CRÉDITO (obligatoria en terminal_response): recibirás una 'OFERTA "
-                "DETERMINISTA' calculada por el motor. La interfaz DEBE incluir el componente "
-                "LoanOffer con amount, apr, months, monthlyPayment, totalInterest y cat, enlazados "
-                "con placeholders a /loan (por ejemplo {{loan.amount}}, {{loan.monthlyPayment}}, "
-                "{{loan.cat}}) y con action 'request_loan'; el backend ya colocó los valores en "
-                "data_model bajo 'loan' (incluye /loan/schedule). Añade un PlanTable/ForecastChart "
-                "con el calendario de pagos real y muestra las advertencias (warnings) del riesgo. "
-                "NUNCA inventes montos, tasas ni pagos: usa exactamente los de la OFERTA.",
-                "",
-                "Responde ÚNICAMENTE con un objeto JSON con esta forma:",
-                '{"response_text": "texto para hablar", "confidence": 0.0, '
-                '"terminal_response": {"catalog_id": "amitie.standard.v1", '
-                '"components": [ ...A2UI flat... ], "data_model": { ... }} | null}',
-                "",
-                "COMPONENTES PERMITIDOS:",
-                describe_components(CATALOG),
-                "",
-                "ACCIONES PERMITIDAS: " + ", ".join(CATALOG.actions),
-                "FORMA (v0.9, flat): cada componente es {\"id\": ..., \"component\": \"Texto\", ...props}.",
             ]
-        )
+        lines += [
+            "- Todos los datos deben derivarse del comportamiento y las tendencias del usuario; "
+            "prohibido inventar cifras o dar consejos genéricos.",
+            "",
+            "OFERTA DE CRÉDITO (obligatoria en terminal_response): recibirás una 'OFERTA "
+            "DETERMINISTA' calculada por el motor. La interfaz DEBE incluir el componente "
+            "LoanOffer con amount, apr, months, monthlyPayment, totalInterest y cat, enlazados "
+            "con placeholders a /loan (por ejemplo {{loan.amount}}, {{loan.monthlyPayment}}, "
+            "{{loan.cat}}) y con action 'request_loan'; el backend ya colocó los valores en "
+            "data_model bajo 'loan' (incluye /loan/schedule). NUNCA inventes montos, tasas ni "
+            "pagos: usa exactamente los de la OFERTA. Incluso con audiencia 'simple', el MONTO "
+            "SIEMPRE debe aparecer en LoanOffer.",
+            "",
+            "Responde ÚNICAMENTE con un objeto JSON con esta forma:",
+            '{"response_text": "texto para hablar", "confidence": 0.0, '
+            '"terminal_response": {"catalog_id": "amitie.standard.v1", '
+            '"components": [ ...A2UI flat... ], "data_model": { ... }} | null}',
+            "",
+            "COMPONENTES PERMITIDOS:",
+            describe_components(CATALOG),
+            "",
+            "ACCIONES PERMITIDAS: " + ", ".join(CATALOG.actions),
+            "FORMA (v0.9, flat): cada componente es {\"id\": ..., \"component\": \"Texto\", ...props}.",
+        ]
+        return "\n".join(lines)
 
     async def _synthesize(self, text: str, user_id: str) -> dict[str, Any] | None:
         if not text.strip():
@@ -255,6 +286,8 @@ class LoansConsultService:
         started = time.perf_counter()
         context = await self._toolbox.call("get_credit_history", {"user_id": user_id})
         analysis = await self._toolbox.call("analyze_loans", {"user_id": user_id})
+        audience_result = await self._toolbox.call("get_audience", {"user_id": user_id})
+        audience = audience_result.get("audience") if isinstance(audience_result, dict) else None
         requested_amount = _extract_amount(text)
         offer = await self._toolbox.call(
             "compute_loan_offer", {"user_id": user_id, "requested_amount": requested_amount or 0.0}
@@ -268,12 +301,14 @@ class LoansConsultService:
             },
         )
         messages = [
-            ChatMessage(role="system", content=self._system_prompt()),
+            ChatMessage(role="system", content=self._system_prompt(audience)),
             ChatMessage(
                 role="user",
                 content=(
                     "Historial de crédito del usuario (JSON):\n"
                     + json.dumps(context.get("creditHistory", {}), ensure_ascii=False)
+                    + "\n\nAudiencia determinista (nivel e instrucciones de complejidad):\n"
+                    + json.dumps(audience, ensure_ascii=False)
                     + "\n\nAnalisis determinista (cifras reales; úsalas, no las inventes):\n"
                     + json.dumps(analysis.get("analysis", {}), ensure_ascii=False)
                     + "\n\nOFERTA DETERMINISTA (amount, apr, months, monthlyPayment, totalInterest, "
@@ -330,6 +365,8 @@ class LoansConsultService:
             terms = result.get("offer", {}) if isinstance(result, dict) else {}
             terminal.setdefault("data_model", {})
             if isinstance(terminal["data_model"], dict):
+                if isinstance(audience, dict):
+                    terminal["data_model"]["audience"] = audience
                 terminal["data_model"]["loan"] = {
                     **terms,
                     "schedule": result.get("schedule", []) if isinstance(result, dict) else [],
@@ -378,6 +415,10 @@ class LoansConsultService:
         }
         if "LoanOffer" not in types:
             return "terminal_response debe incluir el componente LoanOffer"
+        if not _has_valid_loan_offer(
+            [{"updateComponents": {"components": terminal["components"]}}]
+        ):
+            return "LoanOffer debe incluir amount (numérico o enlace a /loan/amount)"
         return None
 
     async def _persist_terminal(

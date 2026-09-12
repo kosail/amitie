@@ -14,7 +14,10 @@ class SeedTest(unittest.TestCase):
             self.assertIn(table, tables)
 
         transactions = [params for sql, params in statements if sql.startswith("INSERT INTO transactions")]
-        self.assertEqual(len(transactions), 96)
+        self.assertEqual(len(transactions), 294)
+
+        users = [params for sql, params in statements if sql.startswith("INSERT INTO users")]
+        self.assertEqual(len(users), 5)
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 from db.port import DatabasePort
+from engine import audience
 from engine import loan_offer
 from engine import loans_analysis
 from engine import offer as offer_engine
@@ -36,7 +37,7 @@ def _recipient_id() -> str:
 async def get_profile(database: DatabasePort, user_id: str) -> dict[str, Any] | None:
     row = await database.fetch_one(
         "SELECT u.id, u.name, u.age, u.city, u.monthly_income, u.pay_frequency, u.credit_score, "
-        "a.mode AS accessibility_mode "
+        "u.education_level, a.mode AS accessibility_mode "
         "FROM users u LEFT JOIN accessibility_profiles a ON a.user_id = u.id WHERE u.id = ?",
         (user_id,),
     )
@@ -50,8 +51,38 @@ async def get_profile(database: DatabasePort, user_id: str) -> dict[str, Any] | 
         "monthlyIncome": row["monthly_income"],
         "payFrequency": row["pay_frequency"],
         "creditScore": row["credit_score"],
+        "educationLevel": row["education_level"],
         "accessibilityMode": row["accessibility_mode"],
     }
+
+
+async def get_audience(database: DatabasePort, user_id: str) -> dict[str, Any] | None:
+    """Deterministic comprehension/sophistication profile for UI adaptation."""
+    profile = await get_profile(database, user_id)
+    if profile is None:
+        return None
+    txn = await database.fetch_one(
+        "SELECT COUNT(*) AS n, COUNT(DISTINCT category) AS c FROM transactions WHERE user_id = ?",
+        (user_id,),
+    )
+    accounts = await database.fetch_one(
+        "SELECT COUNT(*) AS n FROM accounts WHERE user_id = ?", (user_id,)
+    )
+    liabilities = await database.fetch_one(
+        "SELECT COUNT(*) AS n FROM liabilities WHERE user_id = ?", (user_id,)
+    )
+    subscriptions = await database.fetch_one(
+        "SELECT COUNT(*) AS n FROM subscriptions WHERE user_id = ?", (user_id,)
+    )
+    return audience.classify(
+        profile,
+        accessibility_mode=profile.get("accessibilityMode"),
+        transaction_count=int((txn or {}).get("n") or 0),
+        distinct_categories=int((txn or {}).get("c") or 0),
+        account_count=int((accounts or {}).get("n") or 0),
+        liability_count=int((liabilities or {}).get("n") or 0),
+        subscription_count=int((subscriptions or {}).get("n") or 0),
+    )
 
 
 async def get_liabilities(database: DatabasePort, user_id: str) -> list[dict[str, Any]]:

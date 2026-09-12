@@ -5,6 +5,7 @@ strategy; these modules compute the numbers.
 """
 
 from .amortization import Liability, MonthSnapshot, Plan, monthly_rate, simulate, total_min_payment
+from .audience import classify as classify_audience
 from .break_detection import BreakReport, detect_plan_breaks
 from .feasibility import (
     FeasibilityResult,
@@ -23,6 +24,7 @@ __all__ = [
     "Plan",
     "available_monthly_capacity",
     "analyze_loans",
+    "classify_audience",
     "compute_cat",
     "compute_feasibility",
     "detect_plan_breaks",

@@ -214,9 +214,17 @@ The system prompt is assembled from:
 7. **Rich-UI rule:** a terminal UI must include a payment forecast (`ForecastChart`
    or `LineChart`) and a payment schedule (`PlanTable`), plus key metrics
    (`ProgressBar`/`Badge`).
+8. **Audience directive (`REQ-LM-11`):** the backend calls `get_audience(user_id)`
+   and injects a deterministic `simple | standard | detailed` directive derived
+   from age, accessibility, `education_level` and real activity. With `simple` the
+   insight mandate shrinks (plain language, max two sections, no CAT/DTI/risk/
+   `ScenarioComparison`) but `LoanOffer.amount` remains mandatory; with `detailed`
+   CAT, DTI, the full risk panel and charts are required; `standard` keeps the
+   current mandate. The audience object is also written to the surface data model
+   at `/audience`.
 
 The user turn carries the user data (§6) **plus the deterministic `Analisis`**
-(§6.1) plus the running conversation text.
+(§6.1), **the audience object**, plus the running conversation text.
 
 ### 5.3 Provider mechanics
 

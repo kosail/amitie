@@ -129,14 +129,16 @@ class LoansConsultTest(unittest.TestCase):
     def tearDown(self) -> None:
         self._tmp.cleanup()
 
-    def _app(self, payloads):
-        provider = QueueProvider(payloads)
+    def _app_with(self, provider):
         settings = Settings(
             database_path=self.db_path, audio_cache_dir=str(Path(self._tmp.name) / "audio")
         )
         app = create_app(provider=provider, settings=settings, tts=FakeTTS())
         self.provider = provider
         return app
+
+    def _app(self, payloads):
+        return self._app_with(QueueProvider(payloads))
 
     def test_greeting_is_personalized_and_returns_mp3(self) -> None:
         with TestClient(self._app([])) as client:
@@ -194,11 +196,7 @@ class LoansConsultTest(unittest.TestCase):
 
     def test_prompt_includes_offer_and_analysis(self) -> None:
         provider = CapturingProvider(_terminal("ok", 0.4))
-        settings = Settings(
-            database_path=self.db_path, audio_cache_dir=str(Path(self._tmp.name) / "audio")
-        )
-        app = create_app(provider=provider, settings=settings, tts=FakeTTS())
-        with TestClient(app) as client:
+        with TestClient(self._app_with(provider)) as client:
             session = parse_multipart(
                 client.post("/api/loans/greeting", json={"user_id": "u_don"})
             )[0]["session_id"]
@@ -209,6 +207,29 @@ class LoansConsultTest(unittest.TestCase):
         self.assertIn("Analisis determinista", joined)
         self.assertIn("OFERTA DETERMINISTA", joined)
         self.assertIn("LoanOffer", joined)
+
+    def test_prompt_adapts_to_low_literacy_audience(self) -> None:
+        provider = CapturingProvider(_terminal("Listo.", 0.9))
+        with TestClient(self._app_with(provider)) as client:
+            session = parse_multipart(
+                client.post("/api/loans/greeting", json={"user_id": "u_don"})
+            )[0]["session_id"]
+            payload, _audio = parse_multipart(
+                client.post(
+                    "/api/loans/consult",
+                    json={"session_id": session, "text": "quiero un crédito"},
+                )
+            )
+        joined = " ".join(message.content or "" for message in provider.messages)
+        self.assertIn("ADAPTACIÓN DE AUDIENCIA", joined)
+        self.assertIn("BÁSICA", joined)
+        self.assertIsNotNone(payload["terminal_response"])
+        data_model = next(
+            m["updateDataModel"]["value"]
+            for m in payload["terminal_response"]["a2ui"]
+            if "updateDataModel" in m
+        )
+        self.assertEqual(data_model["audience"]["level"], "simple")
 
     def test_missing_loan_offer_is_rejected(self) -> None:
         bad = {

@@ -91,13 +91,18 @@ Response 401: `{ "detail": "Usuario o contraseña incorrectos." }`
 
 **Seeded demo credentials (use these):**
 
-| username | password | user_id | name | accessibility_mode |
+| username | password | user_id | name | behavior / audience |
 |---|---|---|---|---|
-| `demo` | `demo1234` | `u_ana` | Ana López | `null` (standard) |
-| `accesible` | `demo1234` | `u_don` | Don Miguel | `low_literacy` (accessible) |
+| `demo` | `demo1234` | `u_ana` | Ana López | over-indebted; `detailed` UI, standard catalog |
+| `roberto` | `demo1234` | `u_roberto` | Roberto Díaz | high income, healthy; `detailed` UI |
+| `sofia` | `demo1234` | `u_sofia` | Sofía Ramírez | young, moderate; `standard` UI |
+| `carmen` | `demo1234` | `u_carmen` | Carmen Ruiz | basic education; `simple` UI (standard catalog) |
+| `accesible` | `demo1234` | `u_don` | Don Miguel | `low_literacy` (accessible); `simple` UI + voz-color + speech |
 
 `accessibility_mode != null` → the backend will emit the `amitie.voz-color.v1`
-catalog and attach speech automatically. Do not add a toggle.
+catalog and attach speech automatically. Do not add a toggle. Independently,
+every user gets a `/audience` level (`simple`/`standard`/`detailed`) that drives
+content complexity (see §3).
 
 ### `POST /api/session` (no-auth alternative)
 
@@ -131,9 +136,25 @@ Every `a2ui` is a JSON array; each message carries `"version": "v0.9"`.
 Any prop may be a literal or a binding `{ "path": "/json/pointer" }`. Resolve
 bindings against the surface **data model** (the value from `updateDataModel`).
 Root keys are flat (no `/finance` wrapper):
-`profile, liabilities, totals, incomeStreams, subscriptions, subscriptionTotal, cashFlow, plan, speech`.
+`profile, liabilities, totals, incomeStreams, subscriptions, subscriptionTotal, cashFlow, plan, speech, audience`.
 
 Example: `{"path": "/plan/months"}` → `dataModel.plan.months`.
+
+### Audience adaptation (`/audience`)
+
+Every hydrated surface carries `audience` — a backend-computed (never LLM-chosen)
+object describing how complex the UI should be for this user:
+
+```json
+{ "level": "simple", "comprehension": "basic", "financialSophistication": "low",
+  "explainTerms": true, "showAdvancedMetrics": false, "showCharts": false,
+  "maxSections": 2, "directive": "AUDIENCIA: comprensión BÁSICA…" }
+```
+
+`level` is `simple | standard | detailed`, derived from age, accessibility mode,
+last obtained degree and real transaction volume. The LLM adapts content and
+layout to it (e.g. `simple` hides CAT/DTI and dense tables). Regardless of level,
+a loans terminal **always** includes `LoanOffer` with a numeric `amount`.
 
 ### Catalogs
 
@@ -409,7 +430,7 @@ Plain JSON for screens that render their own UI (Inicio, Préstamos, login).
 
 | Method/path | Request | Response |
 |---|---|---|
-| `GET /api/profile?user_id=` | – | `{ profile: {id,name,age,city,monthlyIncome,payFrequency,creditScore,accessibilityMode} }` (404 unknown) |
+| `GET /api/profile?user_id=` | – | `{ profile: {id,name,age,city,monthlyIncome,payFrequency,creditScore,educationLevel,accessibilityMode} }` (404 unknown) |
 | `GET /api/accounts?user_id=` | – | `{ accounts: [{id,kind,institution,balance,currency}] }` |
 | `GET /api/liabilities?user_id=` | – | `{ liabilities:[{id,creditor,kind,principal,balance,apr,minPayment,dueDay,nominaDiscount,status}], total_debt, total_min_payment }` |
 | `POST /api/liabilities/{id}/payment` | `{ user_id, amount, account_id? }` | `{ status, applied_amount, liability, account, transaction, issues }`; **400** if rejected |

@@ -24,6 +24,13 @@ class FinanceToolsTest(unittest.TestCase):
                     profile = await toolbox.call("get_profile", {"user_id": "u_ana"})
                     self.assertEqual(profile["profile"]["name"], "Ana López")
                     self.assertEqual(profile["profile"]["payFrequency"], "quincenal")
+                    self.assertEqual(profile["profile"]["educationLevel"], "licenciatura")
+
+                    audience = await toolbox.call("get_audience", {"user_id": "u_ana"})
+                    self.assertEqual(audience["audience"]["level"], "detailed")
+
+                    don_audience = await toolbox.call("get_audience", {"user_id": "u_don"})
+                    self.assertEqual(don_audience["audience"]["level"], "simple")
 
                     liabilities = await toolbox.call("get_liabilities", {"user_id": "u_ana"})
                     self.assertEqual(len(liabilities["liabilities"]), 5)

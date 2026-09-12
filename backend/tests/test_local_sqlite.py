@@ -18,10 +18,13 @@ class LocalSQLiteDatabaseTest(unittest.TestCase):
                 await seed(database)
 
                 users = await database.fetch_all("SELECT id FROM users ORDER BY id")
-                self.assertEqual([row["id"] for row in users], ["u_ana", "u_don"])
+                self.assertEqual(
+                    [row["id"] for row in users],
+                    ["u_ana", "u_carmen", "u_don", "u_roberto", "u_sofia"],
+                )
 
                 count = await database.fetch_one("SELECT COUNT(*) AS n FROM transactions")
-                self.assertEqual(count["n"], 96)
+                self.assertEqual(count["n"], 294)
 
                 total = await database.fetch_one(
                     "SELECT SUM(balance) AS total FROM liabilities WHERE user_id = ?",
@@ -51,8 +54,8 @@ class LocalSQLiteDatabaseTest(unittest.TestCase):
                 await seed(database)
                 users = await database.fetch_one("SELECT COUNT(*) AS n FROM users")
                 tickets = await database.fetch_one("SELECT COUNT(*) AS n FROM transactions")
-                self.assertEqual(users["n"], 2)
-                self.assertEqual(tickets["n"], 96)
+                self.assertEqual(users["n"], 5)
+                self.assertEqual(tickets["n"], 294)
                 await database.close()
 
             asyncio.run(run())
