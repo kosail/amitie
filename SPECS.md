@@ -14,7 +14,7 @@
 - [~] **REQ-LOOP-02** — The agent emits the interface as A2UI messages; the frontend renders it using the team's custom catalog. (Backend emits + validates; renderer is the frontend team's.)
 - [x] **REQ-LOOP-03** — A user interaction with a generated component returns to the agent as context and can change the next decision and the next interface.
 - [x] **REQ-LOOP-04** — The experience never terminates after a single generated interface; at least two structural mutations occur in a session.
-- [x] **REQ-LOOP-05** — Every HTTP mutation endpoint returns a full A2UI message array.
+- [x] **REQ-LOOP-05** — Every A2UI mutation endpoint returns a full A2UI message array. (The plain-REST extension in §8.1 returns domain JSON instead and is exempt from this rule and REQ-LOOP-06.)
 - [x] **REQ-LOOP-06** — Every generated interface uses only components, props, and actions defined in `A2UI_CATALOG.md` for the declared catalog.
 
 ## 2. La Mesa + El Revés (CORE)
@@ -29,16 +29,13 @@
 - [x] **REQ-LM-08** — The user can seize the negotiation via a "take control" action, replacing the advocate persona with direct edits.
 - [x] **REQ-LM-09** — Accepting an offer executes an MCP action and emits a final confirmed-plan interface with next steps.
 
-## 3. Saving Bags (SECONDARY CORE)
+## 3. Saving Bags — PENDING TO BE RELEASED
 
-- [x] **REQ-BAG-01** — A user can create a saving bag by name.
-- [x] **REQ-BAG-02** — The agent infers a question set from the bag name and emits it as a generated A2UI form (not a fixed questionnaire).
-- [x] **REQ-BAG-03** — The system researches real average costs (e.g., flights and trip costs for a travel bag) via Gemini with Google Search grounding.
-- [x] **REQ-BAG-04** — Research results are cached as an immutable snapshot in `saving_bag_research`; live research runs only on create/refresh.
-- [x] **REQ-BAG-05** — If grounding fails or times out, a deterministic fallback price table produces the estimate.
-- [x] **REQ-BAG-06** — The agent compares the researched estimated total against the user's declared goal and surfaces the gap.
-- [x] **REQ-BAG-07** — The agent computes feasibility and a projected completion date from mocked financial reality (transactions, income trends, subscriptions, liabilities).
-- [x] **REQ-BAG-08** — The saving-bag UI is persisted and can be re-fetched; re-fetching reflects updated data and may mutate the interface when financial reality changes.
+> **PENDING TO BE RELEASED.** The Saving Bags flow is staged but not part of the
+> shipped surface. Its implementation is retained on disk (`engine/savings.py`,
+> `mcp_servers/savings/`, `api/routers/saving_bags.py`) but is **not wired** into
+> the app, the agent, or the API contract. `REQ-BAG-01..08` and `REQ-API-05` are
+> deferred and not released. Do not build or depend on them.
 
 ## 4. Voz y Color (automatic accessibility)
 
@@ -61,7 +58,7 @@
 
 ## 7. UI persistence & hydration
 
-- [x] **REQ-UI-01** — Generated UIs are stored per user, associated to `loans_credits` or `saving_bag` and their entity, using placeholders.
+- [x] **REQ-UI-01** — Generated UIs are stored per user, associated to their domain (`loans_credits`; the `saving_bag` domain is pending, §3) and entity, using placeholders.
 - [x] **REQ-UI-02** — The backend hydrates placeholders with current data immediately before delivery; stale values are never delivered.
 - [x] **REQ-UI-03** — A revalidation pass may mutate the stored structure; data-only changes are insufficient.
 - [x] **REQ-UI-04** — Each stored UI carries a version that increments on structural change.
@@ -72,24 +69,34 @@
 - [x] **REQ-API-02** `POST /api/message` — `{session_id, text|audio_b64}` → `{a2ui[], surface_id, audio_ref?}`
 - [x] **REQ-API-03** `POST /api/action` — `{surface_id, name, source_component_id, context}` → `{a2ui[]}`
 - [x] **REQ-API-04** `GET /api/ui/{surface_id}` — hydration + revalidation → `{a2ui[]}`
-- [x] **REQ-API-05** Saving bags: `POST /api/saving-bags`, `GET /api/saving-bags[/{id}]`, `POST /api/saving-bags/{id}/answer`, `POST /api/saving-bags/{id}/refresh`
+- [~] **REQ-API-05** Saving bags: **PENDING TO BE RELEASED** (endpoints staged but not wired; see §3).
 - [x] **REQ-API-06** `POST /api/negotiation/{session}/turn`, `POST /api/negotiation/{session}/take-control`
 - [x] **REQ-API-07** `GET /api/audio/{asset_id}`
 - [x] **REQ-API-08** `GET /debug/kill-test/{surface_id}`, `GET /debug/trace/{trace_id}`
 
-- [x] **REQ-API-08b** Loans: `POST /api/loans/greeting` (intro audio + session), `POST /api/loans/consult` (`{session_id, text|audio_b64, loan_request_id?}` → `{response_text, confidence, terminal_response, audio_ref}`), `GET /api/loans/{loan_request_id}` (hydrated terminal UI). See `LOANS_CONSULT_GUIDE.md`.
+- [x] **REQ-API-08b** Loans: `POST /api/loans/greeting` (personalized intro audio + session) and `POST /api/loans/consult` (`{session_id, text|audio_b64, loan_request_id?}`) both return **`multipart/form-data`** (`payload` JSON part + `audio` mp3 part; `{response_text, confidence, terminal_response}`); `GET /api/loans/{loan_request_id}` returns the hydrated terminal UI as JSON. See `LOANS_CONSULT_GUIDE.md`.
+- [x] **REQ-API-08c** `POST /api/loans` — create the offered loan **only on explicit user action** (`{user_id, amount, months?, loan_request_id?}`), validated against the stored offer, inserting the `loans` row and disbursing atomically. The terminal generation never creates a loan.
+- [x] **REQ-LM-10** — The loans consult returns a deterministic, engine-backed offer: backend-proposed amount (affordability), terms, IRR-based CAT, per-month schedule, and a risk panel (DTI, surplus, liquidity buffer, relative cost, income stability, payroll deduction, savings-goal delay, payment history), surfaced via a required `LoanOffer` component carrying a numeric `amount`.
 
 > **Diagnostics — not part of this frozen contract, and not for frontend use.** The frontend must not depend on `GET /debug/trace/{trace_id}`, `GET /debug/kill-test/{surface_id}`, `GET /debug/providers`, `POST /debug/stt`, or `POST /debug/tts`. They are developer tools and are disabled when `ENABLE_DEBUG_ENDPOINTS=0`.
+
+### 8.1 Plain-REST extension (native screens, frozen)
+
+A second, **non-A2UI** contract surface for native frontend screens that render their own UI (login, Inicio, Préstamos). These return domain JSON, not A2UI messages, and are exempt from `REQ-LOOP-05`/`REQ-LOOP-06`. All data still flows through the `finance` MCP server (`INV-014`).
+
+- [x] **REQ-API-09** `GET /api/profile`, `GET /api/accounts`, `GET /api/liabilities` — read the seeded financial picture for a `user_id`.
+- [x] **REQ-API-10** `POST /api/liabilities/{id}/payment` — internal, persisted "abono" that debits a seeded account and reduces the liability (validated atomically; never the LLM).
+- [x] **REQ-API-11** `POST /api/login` — real credential verification for the two seeded personas; see `REQ-AUTH-01..04` (§12).
 
 ## 9. Data
 
 - [x] **REQ-DATA-01** — The local SQLite schema covers: users, accounts, transactions, income_streams, subscriptions, liabilities, lender_policies, saving_bags, saving_bag_answers, saving_bag_research, saving_bag_plan, generated_ui, ui_actions, negotiation_rounds, accessibility_profiles, audio_assets, sessions, traces.
-- [x] **REQ-DATA-02** — A deterministic, re-runnable seed provides: one debt persona, one accessible persona, one travel saving bag, and at least six months of transaction/subscription history.
+- [x] **REQ-DATA-02** — A deterministic, re-runnable seed provides: one debt persona, one accessible persona, at least six months of transaction/subscription history, and (retained but unused) one travel saving-bag record for the pending feature (§3).
 - [x] **REQ-DATA-03** — Persistence is a single local SQLite database; there is no remote or managed database. All data and processing remain on the backend host.
 - [x] **REQ-DATA-04** — All persistence is reached through a narrow persistence port; the agent and MCP layers never touch the SQLite driver directly.
 - [ ] **REQ-DATA-05** — The local backend is exposed to the internet exclusively through a Cloudflare Tunnel; no Cloudflare database or Workers runtime is used.
 
-> **Contract note (2026-09-12):** `backend/api/routers/finance.py` adds `GET /api/profile`, `GET /api/accounts`, `GET /api/liabilities`, and `POST /api/liabilities/{id}/payment` alongside this section's A2UI-only contract, for native frontend screens (Inicio, Préstamos) that render their own UI instead of a generated surface. Still reached only through the `finance` MCP server (INV-014). Not yet promoted to numbered `REQ-API-*` entries — pending an explicit decision on whether to formalize this as a second, non-A2UI contract surface. See `CHANGELOG.md`.
+> **Contract note (2026-09-12):** the plain-REST finance endpoints are now formally part of the frozen contract in §8.1 (`REQ-API-09`/`REQ-API-10`), reached only through the `finance` MCP server (`INV-014`).
 
 ## 10. Non-functional
 
@@ -103,7 +110,7 @@
 ## 11. Demo
 
 - [ ] **REQ-DEMO-01** — The demo shows, in order: intent → MCP retrieval → generated UI → user interaction → returned context → BreakAlert mutation → repair/reflow → El Revés negotiation → accepted outcome.
-- [ ] **REQ-DEMO-02** — A Saving Bag flow demonstrates a vague goal becoming a researched, dated, funded plan.
+- [~] **REQ-DEMO-02** — A Saving Bag flow demonstrates a vague goal becoming a researched, dated, funded plan. **PENDING TO BE RELEASED** (§3).
 - [ ] **REQ-DEMO-03** — The accessible persona demonstrates the same agent producing a different catalog with audio in/out.
 - [ ] **REQ-DEMO-04** — A recorded golden-path video exists as a fallback.
 

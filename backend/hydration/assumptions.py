@@ -37,29 +37,18 @@ def _debt_assumptions(
     ]
 
 
-def _savings_assumptions(savings: Mapping[str, Any]) -> list[dict[str, Any]]:
-    plan = savings.get("plan") or {}
-    inputs = plan.get("inputs") or {}
-    breakdown = plan.get("breakdown") or {}
-    return [
-        {"key": "days", "label": "Días de viaje", "value": int(inputs.get("days") or 0), "editable": True},
-        {"key": "travelers", "label": "Viajeros", "value": int(inputs.get("travelers") or 1), "editable": True},
-        {"key": "styleMultiplier", "label": "Multiplicador de estilo", "value": float(inputs.get("styleMultiplier") or 1.0), "editable": False},
-        {"key": "monthlyCapacity", "label": "Ahorro mensual", "value": float(plan.get("monthlyCapacity") or 0.0), "editable": False},
-        {"key": "contingency", "label": "Contingencia", "value": float(breakdown.get("contingency") or 0.0), "editable": False},
-    ]
+def _savings_assumptions_unused() -> None:  # pragma: no cover - staged, not wired
+    """Saving Bags is PENDING TO BE RELEASED; retained only as reference."""
+    return None
 
 
 def build_assumptions(
     context: Mapping[str, Any],
     *,
     simulation: Mapping[str, Any] | None = None,
-    savings: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     if isinstance(context, Mapping) and context.get("plan") is not None:
         return _debt_assumptions(context, simulation)
-    if savings and savings.get("plan"):
-        return _savings_assumptions(savings)
     return []
 
 
@@ -67,9 +56,8 @@ def build_assumption_components(
     context: Mapping[str, Any],
     *,
     simulation: Mapping[str, Any] | None = None,
-    savings: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    assumptions = build_assumptions(context, simulation=simulation, savings=savings)
+    assumptions = build_assumptions(context, simulation=simulation)
     if not assumptions:
         return []
 

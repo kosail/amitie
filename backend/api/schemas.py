@@ -190,6 +190,19 @@ class LoansConsultResponse(BaseModel):
     message: str | None = None
 
 
+class LoansCreateRequest(BaseModel):
+    user_id: str = "u_ana"
+    amount: float
+    months: int = 0
+    loan_request_id: str | None = None
+
+
+class LoanResponse(BaseModel):
+    status: str
+    loan: dict[str, Any] | None = None
+    issues: list[str] = Field(default_factory=list)
+
+
 class SavingBagCreateRequest(BaseModel):
     user_id: str = "u_ana"
     name: str

@@ -10,7 +10,11 @@ from mcp.server import MCPServer
 from . import service
 
 
-def build_finance_server(database: DatabasePort) -> MCPServer:
+def build_finance_server(database: DatabasePort, settings: Any | None = None) -> MCPServer:
+    if settings is None:
+        from config import Settings
+
+        settings = Settings()
     server = MCPServer("finance")
 
     @server.tool()
@@ -75,6 +79,13 @@ def build_finance_server(database: DatabasePort) -> MCPServer:
         return {
             "creditHistory": await service.get_credit_history(database, user_id, months=months)
         }
+
+    @server.tool()
+    async def analyze_loans(user_id: str, strategy: str = "avalanche") -> dict[str, Any]:
+        """Deterministic loan analysis: baseline vs accelerated scenarios, interest and
+        months saved, payoff order, the user's behavior tendencies, quincena pressure and
+        a next-best action. The model presents these numbers; it never computes them."""
+        return {"analysis": await service.analyze_loans(database, user_id, strategy=strategy)}
 
     @server.tool()
     async def simulate_plan(
@@ -144,5 +155,49 @@ def build_finance_server(database: DatabasePort) -> MCPServer:
     async def accept_offer(user_id: str, offer: dict[str, Any]) -> dict[str, Any]:
         """Simulated acceptance of an offer; returns confirmation and next steps."""
         return await service.accept_offer(database, user_id, offer)
+
+    @server.tool()
+    async def compute_loan_offer(user_id: str, requested_amount: float = 0.0) -> dict[str, Any]:
+        """Deterministic loan offer: backend-proposed amount, terms, IRR-based CAT,
+        per-month schedule and the risk panel (DTI, surplus, buffer, relative cost,
+        income stability, savings-goal impact, payment-history projection, warnings)."""
+        return {
+            "offer": await service.compute_loan_offer(
+                database,
+                user_id,
+                requested_amount=requested_amount or None,
+                apr=settings.loan_default_apr,
+                term_months=settings.loan_default_term_months,
+                opening_fee_pct=settings.loan_opening_fee_pct,
+                insurance_fee_pct=settings.loan_insurance_fee_pct,
+                dti_cap=settings.loan_dti_cap,
+            )
+        }
+
+    @server.tool()
+    async def store_loan_offer(
+        loan_request_id: str, user_id: str, offer: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Persist the offer shown for a consult so acceptance can be validated."""
+        return await service.store_loan_offer(
+            database, loan_request_id=loan_request_id, user_id=user_id, offer=offer
+        )
+
+    @server.tool()
+    async def create_loan(
+        user_id: str,
+        amount: float,
+        term_months: int = 0,
+        loan_request_id: str = "",
+    ) -> dict[str, Any]:
+        """Create the loan + disburse it (called only when the user accepts)."""
+        return await service.create_loan(
+            database,
+            user_id,
+            amount=amount,
+            apr=settings.loan_default_apr,
+            term_months=term_months or settings.loan_default_term_months,
+            loan_request_id=loan_request_id or None,
+        )
 
     return server

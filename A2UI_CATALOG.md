@@ -32,7 +32,7 @@ Components use the A2UI v0.9 **flat adjacency-list** model: a flat list where ea
 ## 3. Data binding
 
 - Any prop value may be a literal or a JSON-Pointer binding: `{ "path": "/liabilities/0/balance" }`.
-- Bindings resolve against the surface data model updated by `updateDataModel`. The data model root holds the domain keys directly — `profile`, `liabilities`, `totals`, `incomeStreams`, `subscriptions`, `subscriptionTotal`, `cashFlow`, `plan`, `savings`, `speech` — with no `/finance` wrapper.
+- Bindings resolve against the surface data model updated by `updateDataModel`. The data model root holds the domain keys directly — `profile`, `liabilities`, `totals`, `incomeStreams`, `subscriptions`, `subscriptionTotal`, `cashFlow`, `plan`, `speech` — with no `/finance` wrapper.
 - The backend never embeds a literal financial value in a persisted template; it uses bindings or `{{...}}` placeholders (see §7).
 
 ## 4. Actions
@@ -60,8 +60,9 @@ All five fields are required. Defined action names:
 | `toggle_assumption` | `AssumptionChip` | Edit an exposed assumption (Caja de Cristal) |
 | `take_control` | `Button` | User seizes the El Revés negotiation |
 | `accept_offer` | `OfferCard` | Accept a negotiated offer |
-| `refresh_bag` | `Button` | Re-run research and recompute a saving bag |
-| `adjust_goal` | `Slider`, `TextField` | Change a saving-bag goal amount |
+| `request_loan` | `LoanOffer` | User accepts the offered loan (frontend then calls `POST /api/loans`) |
+| `refresh_bag` | `Button` | *(reserved — Saving Bags pending)* |
+| `adjust_goal` | `Slider`, `TextField` | *(reserved — Saving Bags pending)* |
 
 ## 5. Component catalog — primitives
 
@@ -88,7 +89,7 @@ All five fields are required. Defined action names:
 | Type | Props |
 |---|---|
 | `DebtNode` | `creditor: string`, `balance: number \| binding`, `apr: number \| binding`, `minPayment: number \| binding`, `kind?: string`, `badge?: string` |
-| `CashFlowTimeline` | `points: { period: string, income: number, expenses: number, net: number }[]` |
+| `CashFlowTimeline` | `points: { period: string, income: number, expenses: number, net: number }[]` *(reserved — Saving Bags pending)* |
 | `TradeoffScale` | `leftLabel: string`, `rightLabel: string`, `value: number \| binding` (0–100), `action: Action` |
 | `PlanTable` | `months: { month: number, totalBalance: number, payment: number, interest: number, cash: number }[]`, `breakMonth?: number \| null` |
 | `BreakAlert` | `month: number`, `shortfall: number`, `reasons?: string[]`, `assumptions?: string[]` |
@@ -96,7 +97,12 @@ All five fields are required. Defined action names:
 | `OfferCard` | `actor: "bank"\|"advocate"`, `headline: string`, `terms: { apr: number, months: number, monthlyPayment: number, totalCost: number }`, `action: Action` |
 | `NegotiationTranscript` | `rounds: { round: number, actor: string, summary: string }[]` |
 | `QuincenaGauge` | `value: number \| binding`, `min: number`, `max: number`, `label?: string` |
-| `GoalJar` | `label: string \| binding`, `current: number \| binding`, `target: number \| binding`, `action?: Action` |
+| `GoalJar` | `label: string \| binding`, `current: number \| binding`, `target: number \| binding`, `action?: Action` *(reserved — Saving Bags pending)* |
+| `LineChart` | `points: { label: string, value: number }[] \| binding`, `title?: string`, `yLabel?: string` |
+| `BarChart` | `bars: { label: string, value: number }[] \| binding`, `title?: string` |
+| `ForecastChart` | `forecast: { period: string, value: number }[] \| binding`, `actual?: { period: string, value: number }[] \| binding`, `title?: string` |
+| `ScenarioComparison` | `scenarios: { label: string, monthlyPayment: number, payoffMonths: number, totalInterest: number, interestSaved?: number, monthsSaved?: number }[] \| binding`, `highlightIndex?: number`, `title?: string` |
+| `LoanOffer` | `amount: number \| binding`, `apr: number \| binding`, `months: number \| binding`, `monthlyPayment: number \| binding`, `totalInterest: number \| binding`, `cat: number \| binding`, `totalCost?: number \| binding`, `schedule?: { month, payment, interest, principal, balance }[] \| binding`, `action?: Action` |
 
 ## 7. Persistence, placeholders, and revalidation
 
@@ -113,8 +119,10 @@ Required by milestone:
 - **M3:** `Column`, `Row`, `Card`, `Text`, `Heading`, `Divider`, `Badge`, `Button`, `ChoiceGroup`, `Slider`, `DebtNode`, `TradeoffScale`.
 - **M4 (added):** `BreakAlert`, `PlanTable`.
 - **M5 (added):** `OfferCard`, `NegotiationTranscript`.
-- **M6 (added):** `List`, `ProgressBar`, `TextField`, `CashFlowTimeline`, `GoalJar`.
+- **M6:** `List`, `ProgressBar`, `TextField` (generic).
+- **PENDING TO BE RELEASED:** `CashFlowTimeline`, `GoalJar` (staged with Saving Bags; not emitted).
 - **M8 (added):** `AssumptionChip` (Caja de Cristal).
+- **Loans (added):** `LineChart`, `BarChart`, `ForecastChart`, `ScenarioComparison`, `LoanOffer` (engine-backed offer + risk for the loans consult).
 
 Everything else in §6 is reserved for later milestones and must not be emitted until the frontend confirms support. Adding components is additive (see §10), so the catalog ID remains `amitie.standard.v1`.
 
@@ -156,5 +164,5 @@ A2UI v0.9 has no audio message type, so speech rides the surface **data model** 
 - In accessible mode (`amitie.voz-color.v1`), every emitted surface carries a `/speech` object:
   `{ "text": string, "audioRef": "/api/audio/{asset_id}", "provider": string }`.
 - The `audioRef` points at the `voice` MCP-generated asset, cached by text hash. The frontend fetches it via `GET /api/audio/{asset_id}` and plays it.
-- Mutation responses (`POST /api/message`, `/api/action`, saving bags, negotiation, `GET /api/ui/{id}`) additionally expose a top-level `audio_ref` field for convenience.
+- Mutation responses (`POST /api/message`, `/api/action`, negotiation, loans, `GET /api/ui/{id}`) additionally expose a top-level `audio_ref` field for convenience.
 - Audio **input** is transcribed through the `voice` MCP (`transcribe_audio`) before the agent interprets it; the transcription is treated as the user's `text`.

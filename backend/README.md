@@ -24,10 +24,12 @@ Two product pillars:
    strategy, asks the genuine tradeoff question, detects that the plan breaks,
    rebuilds the interface, and then negotiates on the user's behalf against a
    bank persona.
-2. **Saving Bags (secondary).** The user names a goal (e.g. "viaje a Japón"); the
-   agent infers clarifying questions, researches real average costs, compares
-   them to the stated goal, and produces a dated plan grounded in the user's
-   actual cash flow.
+2. **Loans & Credits consult (voice-first).** The backend greets the user by name,
+   transcribes text or audio, grounds the answer in `BANK_LOAN_CONTEXT.md` plus the
+   user's real financial behavior, and returns an engine-backed terminal UI with a
+   spoken mp3.
+3. **Saving Bags — PENDING TO BE RELEASED.** Staged but not shipped; the endpoints
+   and agent flow are not wired. Do not build or reference it.
 
 Plus automatic accessibility (**Voz y Color**), transparency (**Caja de Cristal**),
 and the **Kill Test** proving the experience collapses without the LLM.
@@ -49,7 +51,7 @@ and the **Kill Test** proving the experience collapses without the LLM.
             │   FastAPI ──▶ Agent orchestrator (Gemini / ADK)          │
             │      │              │                                    │
             │      │              ├── MCP servers (in-process)         │
-            │      │              │     finance · savings · ui · voice │
+            │      │              │     finance · ui · voice           │
             │      │              └── providers (LLM/TTS/STT, failover)│
             │      │                                                   │
             │      ├── engine/        deterministic financial math     │
@@ -79,7 +81,7 @@ Data never leaves the host: the tunnel only forwards HTTP to the local process
 - Google ADK for agent orchestration.
 - A2UI Python agent SDK schemas for validation (`a2ui-agent-sdk` + `jsonschema`),
   including the accessible `amitie.voz-color.v1` catalog.
-- MCP Python SDK for in-process `finance`, `savings`, `ui`, and `voice` servers.
+- MCP Python SDK for in-process `finance`, `ui`, and `voice` servers (`savings` is staged/pending).
 
 **Planned / in progress**
 - `cloudflared` for internet exposure.
@@ -115,7 +117,8 @@ backend/
     feasibility.py          project_completion(), compute_feasibility(), capacity
     planning.py             context → engine adapter + plan/break payloads (M4)
     offer.py                lender-policy offer generation + feasibility (M5)
-    savings.py              saving-bag estimate + dated funding plan (M6)
+    loan_offer.py           deterministic loan offer + risk panel + CAT (loans)
+    savings.py              STAGED (PENDING TO BE RELEASED) — not wired
 
   observability/            Traceability (implemented; INV-018)
     context.py              Per-request trace id via contextvars
@@ -146,7 +149,7 @@ backend/
 
   hydration/                Data hydration (implemented; M3.2/M4/M6/M7/M8)
     placeholders.py         Pure {{path}} resolve()/collect()
-    service.py              revalidate(): plan-section (M4), savings-section (M6), assumptions (M8)
+    service.py              revalidate(): plan-section (M4), assumptions (M8)
     speech.py               Pure speech-text extraction for accessible surfaces (M7)
     assumptions.py          Caja de Cristal panel (editable AssumptionChips) (M8)
 
@@ -154,11 +157,11 @@ backend/
     toolbox.py              Toolbox over in-memory mcp.Client + result normalization
     finance/                get_profile, get_liabilities, get_income_streams,
                             get_subscriptions, get_cash_flow, get_financial_context,
+                            get_accounts, make_payment, get_credit_history, analyze_loans,
+                            compute_loan_offer, store_loan_offer, create_loan,
                             simulate_plan, detect_plan_breaks,
                             get_lender_policies, generate_offer, evaluate_offer, accept_offer
-    savings/                create_bag, get_bag, list_bags, answer_bag, research_costs,
-                            estimate_total, compute_feasibility, refresh_bag,
-                            get_savings_snapshot
+    savings/                STAGED (PENDING TO BE RELEASED) — not wired into the toolbox
     ui/                     persist_ui (accessible catalog pin + speech + freeze),
                             hydrate_ui, kill_test, a2ui_action, record_negotiation_round,
                             get_negotiation, get_session, set_session_context
@@ -179,7 +182,7 @@ backend/
     main.py                 uvicorn entrypoint (`uvicorn api.main:app`)
     dependencies.py         Depends() accessors over app.state
     schemas.py              Pydantic request/response models
-    routers/                session, message, action, ui, negotiation, saving_bags, audio, voice+debug (debug-only)
+    routers/                session, message, action, ui, negotiation, audio, loans, auth, finance, voice+debug (debug-only)
 
   tests/                    Unit tests (stdlib unittest)
     test_local_sqlite.py    Schema + seed + queries
@@ -207,11 +210,7 @@ backend/
     test_offer_tools.py     Offer MCP tools over the seeded database
     test_negotiation_service.py  Personas, rounds, take-control
     test_m5_acceptance.py   M5 acceptance: negotiation -> take-control -> accept
-    test_savings_engine.py  Saving-bag estimate + funding plan
     test_research_provider.py  Grounding parse + static fallback chain
-    test_savings_tools.py   Saving-bag MCP lifecycle + immutable research snapshots
-    test_hydration_savings.py  Savings revalidation + domain-aware hydration
-    test_m6_acceptance.py   M6 acceptance: goal -> questions -> researched plan + loan
     test_voice_providers.py  TTS/STT chains, fallback, null + ElevenLabs httpx2
     test_voice_tools.py     synthesize/transcribe/cache over MCP
     test_catalog_voz_color.py  Accessible catalog registry + validation
@@ -224,6 +223,9 @@ backend/
     test_voice_api.py       /debug/stt + /debug/tts (provider forcing, cache, raw bytes, kill switch)
     test_pr_switch.py       Silent Gemini->DeepSeek / ElevenLabs->Piper swap + masking
     test_loans_consult.py   Voice-first loans: greeting, structured call, confidence gate, placeholders
+    test_loans_analysis.py  Engine-backed loan scenarios/insights (user-specific)
+    test_loan_offer.py      Deterministic loan offer, CAT and risk panel
+    test_agent_instructions.py  Debt/loans prompts demand engine-backed, non-generic UIs
     test_speech_recognition_stt.py  Local STT: bytes transcription, mp3→WAV, error mapping
     test_demo_golden_path.py  Full journey ordering + <90s budget
 
@@ -253,7 +255,7 @@ python -m pip install -r requirements.txt
 # 3. Create and seed the local database  ->  ./data/amitie.sqlite3
 python -m db.init
 
-# 4. Run the test suite (171 tests expected to pass)
+# 4. Run the test suite (177 tests expected to pass)
 python -m unittest discover -s tests -t . -v
 ```
 
@@ -271,12 +273,12 @@ cloudflared tunnel --url http://localhost:8000
 ```
 
 Endpoints (frozen frontend contract): `POST /api/session`, `POST /api/message`,
-`POST /api/action`, `GET /api/ui/{surface_id}`, saving bags
-(`POST /api/saving-bags`, `GET /api/saving-bags[/{id}]`,
-`POST /api/saving-bags/{id}/answer`, `POST /api/saving-bags/{id}/refresh`),
+`POST /api/action`, `GET /api/ui/{surface_id}`,
 El Revés (`POST /api/negotiation/{session_id}/turn`, `.../take-control`),
-Loans & Credits (`POST /api/loans/greeting`, `POST /api/loans/consult`,
-`GET /api/loans/{loan_request_id}` — see `LOANS_CONSULT_GUIDE.md`),
+Loans & Credits (`POST /api/loans/greeting`, `POST /api/loans/consult` — both return
+`multipart/form-data` with a JSON `payload` part + an `audio` mp3 part;
+`POST /api/loans` creates the loan on user acceptance; `GET /api/loans/{loan_request_id}`
+returns JSON — see `LOANS_CONSULT_GUIDE.md`),
 `GET /api/audio/{asset_id}`, `GET /healthz`.
 
 **Diagnostics (developer-only, not for the frontend):** `GET /debug/trace/{trace_id}`,
@@ -356,9 +358,8 @@ engines, observability, the LLM provider layer with failover, the A2UI contract
 and SDK-schema validation, in-process MCP servers, hydration, the ADK agent, the
 FastAPI HTTP API, the La Mesa mutations (`simulate_plan`, proactive `BreakAlert`,
 repair, deterministic revalidation), El Revés (bank/advocate personas,
-take-control, simulated acceptance), Saving Bags (goal creation, inferred
-question forms, grounded research with fallback, deterministic estimate +
-feasibility, domain-aware hydration, loan handoff), Voz y Color (automatic
+take-control, simulated acceptance), Loans & Credits (voice-first consult,
+engine-backed scenarios), Voz y Color (automatic
 accessible catalog, speech payloads, cached TTS, STT input, standard/accessible
 contrast), Caja de Cristal (editable assumption panel), the Kill Test (frozen
 no-agent artifact), and a structured, retryable provider-failure error contract
@@ -377,20 +378,20 @@ are implemented and covered by tests.
 | A2UI catalog + prompt + validator (M3.1) | ✅ Implemented, tested |
 | A2UI SDK-schema validation (`jsonschema`) | ✅ Implemented, tested |
 | A2UI accessible catalog (`amitie.voz-color.v1`) | ✅ Implemented, tested |
-| MCP servers — finance + savings + ui + voice (in-process) | ✅ Implemented, tested |
+| MCP servers — finance + ui + voice (in-process) | ✅ Implemented, tested |
 | Hydration (placeholders + fresh data) | ✅ Implemented, tested |
 | ADK agent orchestrator (M3.3) | ✅ Implemented, tested |
 | FastAPI HTTP API (M3.4) | ✅ Implemented, tested |
 | La Mesa mutations (`BreakAlert`, repair) (M4) | ✅ Implemented, tested |
 | Structural revalidation (deterministic) | ✅ Implemented, tested |
 | El Revés negotiation (M5) | ✅ Implemented, tested |
-| Saving Bags — research, estimate, plan, loan handoff (M6) | ✅ Implemented, tested |
+| Saving Bags | ⏳ PENDING TO BE RELEASED (staged, not wired) |
 | Voz y Color — accessible catalog, speech, TTS/STT (M7) | ✅ Implemented, tested |
 | Caja de Cristal — editable assumptions (M8) | ✅ Implemented, tested |
 | Kill Test — frozen artifact, no agent (M8) | ✅ Implemented, tested |
 | Provider-failure error contract (`error_code`/`retryable`) + golden-path test (M8) | ✅ Implemented, tested |
 
-**Test suite:** 171 tests, all passing.
+**Test suite:** 177 tests, all passing.
 
 ### Roadmap
 - Backend milestones complete. Remaining demo work is operational: golden-path

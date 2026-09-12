@@ -12,15 +12,8 @@ from .feasibility import (
     compute_feasibility,
     project_completion,
 )
-from .savings import (
-    build_savings_plan,
-    estimate_total,
-    financial_capacity,
-    goal_gap,
-    months_until,
-    style_multiplier,
-    suggest_redirect,
-)
+from .loans_analysis import analyze as analyze_loans
+from .loan_offer import compute_cat, propose_offer, terms_for
 
 __all__ = [
     "BreakReport",
@@ -29,17 +22,14 @@ __all__ = [
     "MonthSnapshot",
     "Plan",
     "available_monthly_capacity",
-    "build_savings_plan",
+    "analyze_loans",
+    "compute_cat",
     "compute_feasibility",
     "detect_plan_breaks",
-    "estimate_total",
-    "financial_capacity",
-    "goal_gap",
     "monthly_rate",
-    "months_until",
+    "propose_offer",
     "project_completion",
     "simulate",
-    "style_multiplier",
-    "suggest_redirect",
+    "terms_for",
     "total_min_payment",
 ]

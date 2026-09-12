@@ -13,7 +13,8 @@
     "take_control",
     "accept_offer",
     "refresh_bag",
-    "adjust_goal"
+    "adjust_goal",
+    "request_loan"
   ],
   "components": {}
 }

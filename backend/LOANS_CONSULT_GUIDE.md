@@ -13,8 +13,8 @@
 ## 1. Objective
 
 Deliver a **voice-first "new loan & credit" consult flow** that matches what the
-frontend team expects, while keeping the existing La Mesa / El Revés / Saving Bags
-flows untouched.
+frontend team expects, while keeping the existing La Mesa / El Revés flows
+untouched.
 
 The frontend expecting this flow:
 
@@ -47,8 +47,8 @@ This is what the change builds on. Read the referenced files before implementing
 | Generic agent turn | `agent/service.py` | ADK tool-calling agent; **always** must call `persist_ui` or the turn errors (`"the agent did not call persist_ui"`). |
 | Negotiation | `agent/negotiation.py` | Same tool-calling pattern for El Revés. |
 | Providers | `providers/{gemini,deepseek,gateway,registry,voice}.py` | Gemini primary → DeepSeek fallback; ElevenLabs → edge-tts; Gemini STT → faster-whisper. |
-| MCP servers | `mcp_servers/{finance,savings,ui,voice}` | `get_financial_context`, `simulate_plan`, `persist_ui`, `hydrate_ui`, `synthesize_speech`, `transcribe_audio`, … |
-| Hydration | `hydration/placeholders.py`, `hydration/service.py` | Resolves `{{path}}` placeholders, then a deterministic revalidation pass (plan / savings / assumptions sections). |
+| MCP servers | `mcp_servers/{finance,ui,voice}` | `get_financial_context`, `simulate_plan`, `persist_ui`, `hydrate_ui`, `synthesize_speech`, `transcribe_audio`, … |
+| Hydration | `hydration/placeholders.py`, `hydration/service.py` | Resolves `{{path}}` placeholders, then a deterministic revalidation pass (plan / assumptions sections). |
 | Contracts | `SPECS.md` §8 | `/api/message` → `{a2ui[], surface_id, audio_ref?}`. No `terminal_response`/`confidence`. |
 | Catalog | `ui_contract/{catalog.json,catalog.schema.json,prompt.py}` | Flat A2UI v0.9; two catalogs (`amitie.standard.v1`, `amitie.voz-color.v1`). |
 | Data | `db/schema.sql` | `generated_ui(id, user_id, domain, entity_id, catalog_id, template_json, bindings_json, version, audience, frozen_json, …)`. No loans table. |
@@ -89,16 +89,23 @@ failures are `{status: "error", error_code, retryable, message}`.
 
 Request: `{ "user_id": "u_ana" }`
 
-Response:
+Response: **`multipart/form-data`** with two parts:
+
+- `payload` (`application/json`):
 ```json
 {
   "status": "ok",
   "session_id": "sess_…",
-  "response_text": "Hola, soy La Mesa. ¿Qué te gustaría hacer?",
+  "response_text": "¿En qué te puedo ayudar hoy, Ana?",
+  "audio_id": "aud_…",
   "audio_ref": "/api/audio/aud_…",
   "terminal_response": null
 }
 ```
+- `audio` (`audio/mpeg`, filename `greeting.mp3`): the spoken greeting, inline.
+
+The greeting is personalized with the user's **first name** (`get_profile` → first
+token of `name`); it falls back to a generic line when the name is missing.
 
 ### 4.2 Consult turn
 
@@ -114,17 +121,20 @@ Request:
   "loan_request_id": "loan_…"        // optional; created if absent
 }
 ```
-- If `audio_b64` is present and `text` is empty → transcribe via the `voice` MCP,
-  then proceed with the transcript.
-- If neither present → `{status:"error", error_code:"bad_request"}`.
+- If `audio_b64` is present and `text` is empty → transcribe via the `voice` MCP
+  (SpeechRecognition under `PR_SWITCH`), then proceed with the transcript.
+- If neither present → an error payload (still multipart, no audio part).
 
-Response:
+Response: **`multipart/form-data`** with two parts:
+
+- `payload` (`application/json`):
 ```json
 {
   "status": "ok",
   "loan_request_id": "loan_…",
   "response_text": "Con tus ingresos puedes acceder a…",
   "confidence": 0.87,
+  "audio_id": "aud_…",
   "audio_ref": "/api/audio/aud_…",
   "terminal_response": {
     "catalog_id": "amitie.standard.v1",
@@ -133,16 +143,35 @@ Response:
   }
 }
 ```
+- `audio` (`audio/mpeg`, filename `reply.mp3`): the spoken answer, inline.
+
 `terminal_response` is **`null`** when the AI does not yet have enough context
-(confidence ≤ 0.80 or it explicitly asks a follow-up question).
+(confidence ≤ 0.80 or it explicitly asks a follow-up question). If TTS is
+unavailable, the `audio` part is omitted (text-only payload).
 
 ### 4.3 Re-fetch a terminal UI
 
 `GET /api/loans/{loan_request_id}`
 
-Returns the persisted terminal surface re-hydrated (placeholders replaced with
-current data), same `terminal_response` shape. 404 if the loan request or its
-surface does not exist.
+Returns **JSON** (no audio) with the persisted terminal surface re-hydrated
+(placeholders replaced with current data), same `terminal_response` shape. 404 if
+the loan request or its surface does not exist.
+
+### 4.4 Deterministic offer + manual creation
+
+The terminal UI **must** include `LoanOffer` (numeric `amount`, `apr`, `months`,
+`monthlyPayment`, `totalInterest`, `cat`, `schedule[]`), computed by
+`engine/loan_offer.py` (`propose_offer`): the backend proposes the amount from the
+user's affordability and builds the risk panel (DTI, disposable surplus, liquidity
+buffer, relative cost vs existing debts/`lender_policies.apr_floor`, income
+stability, payroll-deduction net, savings-goal delay from retained data, and a
+payment-history score projection); CAT is an IRR-based annualized cost including
+fees/insurance. A `loan_offers` row is stored for the consult.
+
+**The loan is created only when the user accepts:** `POST /api/loans`
+(`{user_id, amount, months?, loan_request_id?}`) validates against the stored
+offer and atomically inserts a `loans` row **and disburses** (credits checking +
+a `loan_disbursement` transaction). Generation never creates a loan.
 
 ---
 
@@ -177,8 +206,17 @@ The system prompt is assembled from:
    `ALLOWED ACTIONS`) and the flat-component shape reminder.
 4. The **output contract** above, the confidence rule, and the placeholder rule.
 5. Instruction: `terminal_response = null` when more information is needed.
+6. **Insight mandate (anti-generic):** must include `ScenarioComparison`
+   (base vs accelerated, with interest/months saved), name the first credit to
+   attack (creditor + APR), propose one concrete action with amount + measured
+   effect, and mention subscription leak / quincena pressure when relevant. Cite
+   the user's real numbers; generic advice and invented figures are forbidden.
+7. **Rich-UI rule:** a terminal UI must include a payment forecast (`ForecastChart`
+   or `LineChart`) and a payment schedule (`PlanTable`), plus key metrics
+   (`ProgressBar`/`Badge`).
 
-The user turn carries the user data (§6) plus the running conversation text.
+The user turn carries the user data (§6) **plus the deterministic `Analisis`**
+(§6.1) plus the running conversation text.
 
 ### 5.3 Provider mechanics
 
@@ -218,15 +256,38 @@ Add a finance MCP tool `get_credit_history(user_id)` (service +
 
 - Existing credit instruments (from `liabilities`): creditor, kind, balance, apr,
   minPayment, dueDay, status.
-- Recent payment/cash-flow history derived from `transactions` (e.g. last 6 months
-  of income/expense aggregates per category) — enough for the AI to reason, not the
-  raw ledger.
+- `monthlyCashFlow` (last 6 months of income/expense aggregates) and
+  `spendingByCategory` per month.
+- `recentTransactions` — the most recent raw rows (`occurredOn`, `amount`,
+  `direction`, `category`, `merchant`, `isSubscription`), so the model reads actual
+  user behavior, not just aggregates.
 - Totals (debt, minPayment) and `profile`.
 
 Keep `get_financial_context` as the canonical A2UI data model; this tool is for the
 consult prompt. Never compute financial numbers in the prompt — keep `INV-015`
 (engine owns arithmetic). If the AI needs a simulated plan, it uses the existing
 `simulate_plan` tool output passed as context.
+
+### 6.1 Deterministic analysis (`analyze_loans`)
+
+`engine/loans_analysis.py` (exposed as the `analyze_loans` MCP tool) computes, from
+the user's own liabilities/transactions/subscriptions:
+
+- **baseline** (min-payment payoff months, total interest, total paid) and the
+  **avalanche vs snowball** comparison;
+- **scenarios** (`ScenarioComparison` data): monthly payment, payoff months,
+  total interest, interest saved and months saved for the baseline plus preset
+  extra payments and a **recommended** extra (the user's surplus, or their
+  subscription leak when there is no surplus);
+- **payoffOrder** (per-creditor clear month under the chosen plan);
+- **highCost** (credits ranked by APR);
+- **behavior** (subscription load + share of income, expense volatility, average
+  surplus, month-over-month category movers);
+- **quincena** pressure (inflow/outflow/net per pay period, `tight` flag);
+- **nextBestAction** (target creditor, extra amount, interest/months saved, why).
+
+This is injected into the prompt; the model only presents it and fills
+`{{placeholders}}` (e.g. `{{analysis.scenarios.1.interestSaved}}`).
 
 ---
 
@@ -447,8 +508,7 @@ provider (DeepSeek).
 
 ## 14. Out of scope
 
-- Replacing or modifying the existing `/api/message`, La Mesa, El Revés, or Saving
-  Bags flows.
+- Replacing or modifying the existing `/api/message`, La Mesa, or El Revés flows.
 - Real banking integrations, real money movement, auth (`INV-020`).
 - Cloudflare Tunnel deployment (runbook only).
 

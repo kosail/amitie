@@ -41,7 +41,12 @@
         { "$ref": "#/components/TextField" },
         { "$ref": "#/components/CashFlowTimeline" },
         { "$ref": "#/components/GoalJar" },
-        { "$ref": "#/components/AssumptionChip" }
+        { "$ref": "#/components/AssumptionChip" },
+        { "$ref": "#/components/LineChart" },
+        { "$ref": "#/components/BarChart" },
+        { "$ref": "#/components/ForecastChart" },
+        { "$ref": "#/components/ScenarioComparison" },
+        { "$ref": "#/components/LoanOffer" }
       ]
     }
   },
@@ -480,6 +485,131 @@
             "action": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/Action" }
           },
           "required": ["component", "label", "value"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "LineChart": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "LineChart" },
+            "points": {
+              "oneOf": [
+                { "type": "array", "items": { "type": "object" } },
+                { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DataBinding" }
+              ]
+            },
+            "title": { "type": "string" },
+            "yLabel": { "type": "string" }
+          },
+          "required": ["component", "points"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "BarChart": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "BarChart" },
+            "bars": {
+              "oneOf": [
+                { "type": "array", "items": { "type": "object" } },
+                { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DataBinding" }
+              ]
+            },
+            "title": { "type": "string" }
+          },
+          "required": ["component", "bars"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "ForecastChart": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "ForecastChart" },
+            "forecast": {
+              "oneOf": [
+                { "type": "array", "items": { "type": "object" } },
+                { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DataBinding" }
+              ]
+            },
+            "actual": {
+              "oneOf": [
+                { "type": "array", "items": { "type": "object" } },
+                { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DataBinding" }
+              ]
+            },
+            "title": { "type": "string" }
+          },
+          "required": ["component", "forecast"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "ScenarioComparison": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "ScenarioComparison" },
+            "scenarios": {
+              "oneOf": [
+                { "type": "array", "items": { "type": "object" } },
+                { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DataBinding" }
+              ]
+            },
+            "highlightIndex": { "type": "number" },
+            "title": { "type": "string" }
+          },
+          "required": ["component", "scenarios"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "LoanOffer": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "LoanOffer" },
+            "amount": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "apr": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "months": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "monthlyPayment": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "totalInterest": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "totalCost": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "cat": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "schedule": {
+              "oneOf": [
+                { "type": "array", "items": { "type": "object" } },
+                { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DataBinding" }
+              ]
+            },
+            "action": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/Action" }
+          },
+          "required": ["component", "amount", "apr", "months", "monthlyPayment", "totalInterest", "cat"]
         }
       ],
       "unevaluatedProperties": false

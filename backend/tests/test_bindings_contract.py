@@ -13,10 +13,8 @@ from pathlib import Path
 from db.local_sqlite import LocalSQLiteDatabase
 from db.schema import apply_schema
 from db.seed import seed
-from mcp_servers.savings.server import build_savings_server
 from mcp_servers.toolbox import InProcessToolbox
 from mcp_servers.ui.server import build_ui_server
-from providers.research import StaticPriceTableResearch
 
 _MISSING = object()
 
@@ -97,65 +95,6 @@ class BindingContractTest(unittest.TestCase):
                             ],
                             "data_model": {},
                             "simulation": {"strategy": "avalanche"},
-                        },
-                    )
-                    hydrated = await toolbox.call("hydrate_ui", {"surface_id": persisted["surface_id"]})
-                components, data_model = _delivered(hydrated["a2ui"])
-                bindings = _collect_bindings(components)
-                self.assertTrue(bindings)
-                for path in bindings:
-                    self.assertIsNot(_resolve(path, data_model), _MISSING, f"unresolved binding {path}")
-                await database.close()
-
-            asyncio.run(run())
-
-    def test_savings_bindings_resolve(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            database = LocalSQLiteDatabase(Path(tmp) / "sav_bind.sqlite3")
-
-            async def run() -> None:
-                await apply_schema(database)
-                await seed(database)
-                savings_server = build_savings_server(database, StaticPriceTableResearch())
-                async with InProcessToolbox(
-                    {"savings": savings_server, "ui": build_ui_server(database)}
-                ) as toolbox:
-                    bag = (
-                        await toolbox.call(
-                            "create_bag",
-                            {
-                                "user_id": "u_ana",
-                                "name": "Viaje a Japón",
-                                "target_amount": 45000.0,
-                                "target_date": "2027-04-01",
-                            },
-                        )
-                    )["bag"]["id"]
-                    await toolbox.call(
-                        "answer_bag",
-                        {
-                            "bag_id": bag,
-                            "answers": [
-                                {"question_key": "days", "answer": "10"},
-                                {"question_key": "travelers", "answer": "2"},
-                                {"question_key": "style", "answer": "mochilero"},
-                            ],
-                        },
-                    )
-                    await toolbox.call("research_costs", {"bag_id": bag})
-                    await toolbox.call("compute_feasibility", {"bag_id": bag})
-                    persisted = await toolbox.call(
-                        "persist_ui",
-                        {
-                            "user_id": "u_ana",
-                            "domain": "saving_bag",
-                            "catalog_id": "amitie.standard.v1",
-                            "components": [
-                                {"id": "root", "component": "Column", "children": ["t"], "gap": 12},
-                                {"id": "t", "component": "Heading", "text": "Tu meta"},
-                            ],
-                            "data_model": {},
-                            "entity_id": bag,
                         },
                     )
                     hydrated = await toolbox.call("hydrate_ui", {"surface_id": persisted["surface_id"]})

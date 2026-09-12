@@ -7,11 +7,14 @@ with fresh values.
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import date, datetime, timezone
 from typing import Any
 
 from db.port import DatabasePort
+from engine import loan_offer
+from engine import loans_analysis
 from engine import offer as offer_engine
 from engine import planning
 
@@ -399,6 +402,29 @@ async def accept_offer(
     }
 
 
+async def analyze_loans(
+    database: DatabasePort, user_id: str, *, strategy: str = "avalanche"
+) -> dict[str, Any]:
+    """Deterministic loan analysis for the loans UI (INV-015)."""
+    context = await financial_context(database, user_id)
+    rows = await database.fetch_all(
+        "SELECT occurred_on, amount, direction, category, merchant FROM transactions "
+        "WHERE user_id = ? ORDER BY occurred_on DESC LIMIT 120",
+        (user_id,),
+    )
+    transactions = [
+        {
+            "occurredOn": row["occurred_on"],
+            "amount": row["amount"],
+            "direction": row["direction"],
+            "category": row["category"],
+            "merchant": row["merchant"],
+        }
+        for row in rows
+    ]
+    return loans_analysis.analyze(context, strategy=strategy, transactions=transactions)
+
+
 async def get_credit_history(
     database: DatabasePort, user_id: str, *, months: int = 6
 ) -> dict[str, Any]:
@@ -418,6 +444,23 @@ async def get_credit_history(
         spending.setdefault(row["period"], []).append(
             {"category": row["category"], "spent": round(row["spent"], 2)}
         )
+    txn_rows = await database.fetch_all(
+        "SELECT id, occurred_on, amount, direction, category, merchant, is_subscription "
+        "FROM transactions WHERE user_id = ? ORDER BY occurred_on DESC, id DESC LIMIT ?",
+        (user_id, months * 5),
+    )
+    recent = [
+        {
+            "id": row["id"],
+            "occurredOn": row["occurred_on"],
+            "amount": row["amount"],
+            "direction": row["direction"],
+            "category": row["category"],
+            "merchant": row["merchant"],
+            "isSubscription": bool(row["is_subscription"]),
+        }
+        for row in txn_rows
+    ]
     return {
         "profile": profile,
         "credits": credits,
@@ -427,4 +470,181 @@ async def get_credit_history(
         },
         "monthlyCashFlow": cash_flow["months"],
         "spendingByCategory": spending,
+        "recentTransactions": recent,
     }
+
+
+async def _saving_goals(database: DatabasePort, user_id: str) -> list[dict[str, Any]]:
+    rows = await database.fetch_all(
+        "SELECT id, name, target_amount, target_date FROM saving_bags WHERE user_id = ?",
+        (user_id,),
+    )
+    return [
+        {
+            "name": row["name"],
+            "targetAmount": row["target_amount"],
+            "targetDate": row["target_date"],
+            "currentSaved": 0.0,
+        }
+        for row in rows
+    ]
+
+
+async def _payment_history(database: DatabasePort, user_id: str) -> list[dict[str, Any]]:
+    rows = await database.fetch_all(
+        "SELECT p.status FROM payment_history p "
+        "JOIN liabilities l ON l.id = p.liability_id WHERE l.user_id = ?",
+        (user_id,),
+    )
+    return [{"status": row["status"]} for row in rows]
+
+
+async def compute_loan_offer(
+    database: DatabasePort,
+    user_id: str,
+    *,
+    requested_amount: float | None = None,
+    apr: float = loan_offer.DEFAULT_APR,
+    term_months: int = loan_offer.DEFAULT_TERM_MONTHS,
+    opening_fee_pct: float = loan_offer.DEFAULT_OPENING_FEE_PCT,
+    insurance_fee_pct: float = loan_offer.DEFAULT_INSURANCE_FEE_PCT,
+    dti_cap: float = loan_offer.DEFAULT_DTI_CAP,
+) -> dict[str, Any]:
+    context = await financial_context(database, user_id)
+    accounts = await get_accounts(database, user_id)
+    policies = (await get_lender_policies(database))["policies"]
+    goals = await _saving_goals(database, user_id)
+    history = await _payment_history(database, user_id)
+    return loan_offer.propose_offer(
+        context,
+        accounts=accounts,
+        lender_policies=policies,
+        saving_goals=goals,
+        payment_history=history,
+        requested_amount=requested_amount,
+        apr=apr,
+        term_months=term_months,
+        opening_fee_pct=opening_fee_pct,
+        insurance_fee_pct=insurance_fee_pct,
+        dti_cap=dti_cap,
+    )
+
+
+async def store_loan_offer(
+    database: DatabasePort,
+    *,
+    loan_request_id: str,
+    user_id: str,
+    offer: dict[str, Any],
+) -> dict[str, Any]:
+    terms = offer.get("offer") or offer
+    offer_id = "ofr_" + uuid.uuid4().hex[:10]
+    await database.execute(
+        "INSERT INTO loan_offers (id, loan_request_id, user_id, amount, apr, term_months, "
+        "opening_fee, insurance_fee, cat, monthly_payment, total_interest, total_cost, "
+        "warnings_json, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            offer_id,
+            loan_request_id,
+            user_id,
+            terms.get("amount"),
+            terms.get("apr"),
+            terms.get("termMonths"),
+            terms.get("openingFee", 0.0),
+            terms.get("insuranceFee", 0.0),
+            terms.get("cat", 0.0),
+            terms.get("monthlyPayment"),
+            terms.get("totalInterest", 0.0),
+            terms.get("totalCost", 0.0),
+            json.dumps(offer.get("warnings", []), ensure_ascii=False),
+            datetime.now(timezone.utc).isoformat(),
+        ),
+    )
+    return {"status": "ok", "offer_id": offer_id}
+
+
+async def create_loan(
+    database: DatabasePort,
+    user_id: str,
+    *,
+    amount: float,
+    apr: float = loan_offer.DEFAULT_APR,
+    term_months: int = loan_offer.DEFAULT_TERM_MONTHS,
+    loan_request_id: str | None = None,
+) -> dict[str, Any]:
+    if amount is None or float(amount) <= 0:
+        return {"status": "error", "issues": ["amount must be positive"]}
+
+    if loan_request_id:
+        offered = await database.fetch_one(
+            "SELECT amount, apr, term_months, opening_fee, insurance_fee FROM loan_offers "
+            "WHERE loan_request_id = ? ORDER BY created_at DESC LIMIT 1",
+            (loan_request_id,),
+        )
+        if offered is not None:
+            if float(amount) > float(offered["amount"]) + 0.01:
+                return {
+                    "status": "error",
+                    "issues": ["amount exceeds the offered amount"],
+                }
+            apr = float(offered["apr"])
+            term_months = int(offered["term_months"])
+
+    terms = loan_offer.terms_for(amount, apr=apr, term_months=term_months)
+    loan_id = "loan_" + uuid.uuid4().hex[:10]
+    now = datetime.now(timezone.utc).isoformat()
+
+    account = await database.fetch_one(
+        "SELECT id, balance FROM accounts WHERE user_id = ? AND kind = 'checking' "
+        "ORDER BY id LIMIT 1",
+        (user_id,),
+    )
+    statements: list[tuple[str, tuple]] = [
+        (
+            "INSERT INTO loans (id, user_id, loan_request_id, amount, apr, term_months, "
+            "opening_fee, insurance_fee, cat, monthly_payment, total_interest, total_cost, "
+            "status, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                loan_id,
+                user_id,
+                loan_request_id,
+                terms["amount"],
+                terms["apr"],
+                terms["termMonths"],
+                terms["openingFee"],
+                terms["insuranceFee"],
+                terms["cat"],
+                terms["monthlyPayment"],
+                terms["totalInterest"],
+                terms["totalCost"],
+                "active",
+                now,
+            ),
+        )
+    ]
+    if account is not None:
+        statements.append(
+            (
+                "UPDATE accounts SET balance = ? WHERE id = ?",
+                (round(float(account["balance"]) + terms["amount"], 2), account["id"]),
+            )
+        )
+        statements.append(
+            (
+                "INSERT INTO transactions (id, user_id, account_id, occurred_on, amount, "
+                "direction, category, merchant, is_subscription) VALUES (?,?,?,?,?,?,?,?,?)",
+                (
+                    "t_loan_" + uuid.uuid4().hex[:8],
+                    user_id,
+                    account["id"],
+                    now[:10],
+                    terms["amount"],
+                    "in",
+                    "loan_disbursement",
+                    "Crédito La Mesa",
+                    0,
+                ),
+            )
+        )
+    await database.batch(statements)
+    return {"status": "ok", "loan": {"id": loan_id, "userId": user_id, **terms}}

@@ -16,10 +16,11 @@
 
 **La Mesa** is an AI-agent-driven financial application built for a bank hackathon in Mexico. The agent, not a fixed application, decides what interface the user needs and generates it in real time. Interfaces are described with **A2UI** and delivered as JSON; data and actions are exposed through **MCP**; the LLM is the center of the experience.
 
-Two product pillars:
+Product pillars:
 
 1. **La Mesa + El Revés (core).** The user describes a debt situation; the agent retrieves their real financial picture through MCP, chooses a restructuring strategy, asks the genuine tradeoff question, **detects that the plan breaks**, rebuilds the interface, and then negotiates on the user's behalf against a bank persona.
-2. **Saving Bags (secondary).** The user names a goal (e.g. "viaje a Japón"); the agent infers clarifying questions, researches real average costs, compares them to the user's stated goal, and produces a dated plan grounded in the user's actual (mocked) cash flow. It offers the user loans (redirecting the user to La Mesa) to complete the goal based on specific situation (like almost reaching the deadline or the user wanting to reduce the previously set goal).
+2. **Loans & Credits consult (voice-first).** A dedicated consult flow: the backend greets by name, transcribes the user's text/audio, grounds the answer in `BANK_LOAN_CONTEXT.md` + the user's real financial behavior, and returns an engine-backed terminal UI with a spoken mp3.
+3. **Saving Bags — PENDING TO BE RELEASED.** Staged but not shipped (§4). Do not build or reference it.
 
 Plus automatic accessibility (`Voz y Color`), transparency (`Caja de Cristal`), and the `Kill Test` that proves the experience collapses without the LLM.
 
@@ -60,7 +61,7 @@ Never describe work as innovative, revolutionary, disruptive, personalized, inte
 - FastAPI + Uvicorn for the HTTP API.
 - Google ADK for agent orchestration.
 - A2UI Python agent SDK (`a2ui-agent-sdk`) for schema management and validation.
-- Python MCP SDK for the `finance`, `savings`, `ui`, and `voice` MCP servers.
+- Python MCP SDK for the `finance`, `ui`, and `voice` MCP servers (`savings` is staged/pending, not wired).
 - Persistence is a single local **SQLite** database (stdlib `sqlite3`) reached through a narrow persistence port (`INV-019`). No ORM, no remote or managed database.
 - The local backend is exposed to the internet with a **Cloudflare Tunnel** (`cloudflared`); no Cloudflare database or Workers runtime is used.
 - `httpx` for outbound HTTP.
@@ -81,18 +82,19 @@ Root documents: `AGENTS.md`, `INVARIANTS.md`, `SPECS.md`, `CHANGELOG.md`, and `A
 
 ```
 /backend
-  api/            FastAPI app factory, lifespan, DI, routers (session, message, action, ui, negotiation, saving_bags, audio, loans, debug-only: voice, debug)
+  api/            FastAPI app factory, lifespan, DI, routers (A2UI: session, message, action, ui, negotiation, audio, loans; REST extension: auth, finance; debug-only: voice, debug)
+  auth/           Minimal demo login: PBKDF2 password hashing (passwords.py)
   agent/          ADK orchestrator: model.py (GatewayLlm), tools.py (MCP->ADK), service.py, negotiation.py (El Reves), speech.py, loans.py (voice-first credit consult), bank_context.py
   providers/      base interfaces + gemini, deepseek, research (grounding + static), voice (TTS: elevenlabs/edge-tts; STT: gemini/faster-whisper/speech_recognition), piper + masking (PR_SWITCH), registry
   ui_contract/    catalog.json + voz_color.json + *.schema.json + prompt.py + validator.py + vendored A2UI schemas
   mcp_servers/    in-process MCP servers (named to avoid shadowing the `mcp` SDK)
     finance/      liabilities, income, subscriptions, cash flow, context, offers
-    savings/      saving bags: create, answers, research snapshots, feasibility
+    savings/      STAGED (PENDING TO BE RELEASED) — not wired into the app
     ui/           persist (+ freeze), hydrate, kill_test, a2ui_action, negotiation rounds + session context
     voice/        TTS synthesis (cached) + STT transcription
     toolbox.py    Toolbox over in-memory mcp.Client + result normalization
   engine/         deterministic amortization, break detection, feasibility, planning adapter (pure, tested)
-  hydration/      placeholder resolver + revalidation (plan/savings/assumptions/speech) (pure, tested)
+  hydration/      placeholder resolver + revalidation (plan/assumptions) (pure, tested)
   db/             port.py, local_sqlite.py, schema.sql, schema.py (idempotent column migration), seed.py, sql_utils.py, init.py
   tests/          persistence, engine, observability, provider, and A2UI contract tests
   observability/  trace middleware, structured logging, /debug/trace + /debug/providers
@@ -102,6 +104,8 @@ Root documents: `AGENTS.md`, `INVARIANTS.md`, `SPECS.md`, `CHANGELOG.md`, and `A
 ```
 
 Every MCP server has its own entrypoint and can be started, stopped, and tested independently.
+
+The frozen frontend boundary has **two surfaces** (`INV-023`): the A2UI contract (`SPECS.md` §8, `A2UI_CATALOG.md`) and a plain-REST extension for native screens (`SPECS.md` §8.1 — `auth`, `finance`).
 
 ---
 

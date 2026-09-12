@@ -265,6 +265,37 @@ def build_seed_statements() -> list[tuple[str, tuple]]:
         _transaction_rows(),
     )
 
+    history: list[tuple] = []
+    statuses = {
+        "l_bbva_tdc": ["on_time"] * 5 + ["late"],
+        "l_banorte_tdc": ["on_time"] * 6,
+        "l_nomina": ["on_time"] * 6,
+        "l_personal": ["on_time"] * 5 + ["late"],
+        "l_electronica": ["on_time"] * 4 + ["late", "missed"],
+    }
+    amounts = {
+        "l_bbva_tdc": 2900.0,
+        "l_banorte_tdc": 1350.0,
+        "l_nomina": 1800.0,
+        "l_personal": 1100.0,
+        "l_electronica": 700.0,
+    }
+    counter = 0
+    for liability_id, status_list in statuses.items():
+        for index, status in enumerate(status_list):
+            counter += 1
+            month = 9 - index
+            due = f"2026-{month:02d}-05"
+            paid = None if status == "missed" else due
+            history.append(
+                (f"ph_{counter:03d}", liability_id, due, paid, amounts[liability_id], status)
+            )
+    statements += _inserts(
+        "payment_history",
+        ("id", "liability_id", "due_date", "paid_date", "amount", "status"),
+        history,
+    )
+
     return statements
 
 
@@ -279,6 +310,10 @@ async def seed(database: DatabasePort) -> None:
         "saving_bag_research",
         "saving_bag_answers",
         "saving_bags",
+        "loans",
+        "loan_offers",
+        "loan_requests",
+        "payment_history",
         "lender_policies",
         "liabilities",
         "subscriptions",
