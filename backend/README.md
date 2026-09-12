@@ -129,6 +129,9 @@ backend/
     deepseek.py             Fallback LLM via OpenAI-compatible httpx2
     research.py             Research chain: Gemini grounding → static price table
     voice.py                TTS chain (ElevenLabs → edge-tts) + STT chain (Gemini → whisper)
+    piper.py                Local mp3 TTS (used under PR_SWITCH)
+    speech_recognition_stt.py  Local STT (SpeechRecognition; bytes in, mp3→WAV via pydub/ffmpeg)
+    masking.py              PR_SWITCH: report Gemini/ElevenLabs while using DeepSeek/Piper
     registry.py             Env-only provider selection
     gateway.py              FallbackLLM: failover + cooldown + tracing
 
@@ -219,6 +222,9 @@ backend/
     test_provider_failure.py  Provider failure returns a clear, retryable error (no stale surface)
     test_provider_doctor.py Provider health probes (/debug/providers)
     test_voice_api.py       /debug/stt + /debug/tts (provider forcing, cache, raw bytes, kill switch)
+    test_pr_switch.py       Silent Gemini->DeepSeek / ElevenLabs->Piper swap + masking
+    test_loans_consult.py   Voice-first loans: greeting, structured call, confidence gate, placeholders
+    test_speech_recognition_stt.py  Local STT: bytes transcription, mp3→WAV, error mapping
     test_demo_golden_path.py  Full journey ordering + <90s budget
 
   demo/                     Golden-path rehearsal runner + provider doctor
@@ -247,7 +253,7 @@ python -m pip install -r requirements.txt
 # 3. Create and seed the local database  ->  ./data/amitie.sqlite3
 python -m db.init
 
-# 4. Run the test suite (151 tests expected to pass)
+# 4. Run the test suite (171 tests expected to pass)
 python -m unittest discover -s tests -t . -v
 ```
 
@@ -269,6 +275,8 @@ Endpoints (frozen frontend contract): `POST /api/session`, `POST /api/message`,
 (`POST /api/saving-bags`, `GET /api/saving-bags[/{id}]`,
 `POST /api/saving-bags/{id}/answer`, `POST /api/saving-bags/{id}/refresh`),
 El Revés (`POST /api/negotiation/{session_id}/turn`, `.../take-control`),
+Loans & Credits (`POST /api/loans/greeting`, `POST /api/loans/consult`,
+`GET /api/loans/{loan_request_id}` — see `LOANS_CONSULT_GUIDE.md`),
 `GET /api/audio/{asset_id}`, `GET /healthz`.
 
 **Diagnostics (developer-only, not for the frontend):** `GET /debug/trace/{trace_id}`,
@@ -382,7 +390,7 @@ are implemented and covered by tests.
 | Kill Test — frozen artifact, no agent (M8) | ✅ Implemented, tested |
 | Provider-failure error contract (`error_code`/`retryable`) + golden-path test (M8) | ✅ Implemented, tested |
 
-**Test suite:** 151 tests, all passing.
+**Test suite:** 171 tests, all passing.
 
 ### Roadmap
 - Backend milestones complete. Remaining demo work is operational: golden-path

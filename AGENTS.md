@@ -81,9 +81,9 @@ Root documents: `AGENTS.md`, `INVARIANTS.md`, `SPECS.md`, `CHANGELOG.md`, and `A
 
 ```
 /backend
-  api/            FastAPI app factory, lifespan, DI, routers (session, message, action, ui, negotiation, saving_bags, audio, debug-only: voice, debug)
-  agent/          ADK orchestrator: model.py (GatewayLlm), tools.py (MCP->ADK), service.py, negotiation.py (El Reves), speech.py
-  providers/      base interfaces + gemini, deepseek, research (grounding + static), voice (TTS/STT), registry
+  api/            FastAPI app factory, lifespan, DI, routers (session, message, action, ui, negotiation, saving_bags, audio, loans, debug-only: voice, debug)
+  agent/          ADK orchestrator: model.py (GatewayLlm), tools.py (MCP->ADK), service.py, negotiation.py (El Reves), speech.py, loans.py (voice-first credit consult), bank_context.py
+  providers/      base interfaces + gemini, deepseek, research (grounding + static), voice (TTS: elevenlabs/edge-tts; STT: gemini/faster-whisper/speech_recognition), piper + masking (PR_SWITCH), registry
   ui_contract/    catalog.json + voz_color.json + *.schema.json + prompt.py + validator.py + vendored A2UI schemas
   mcp_servers/    in-process MCP servers (named to avoid shadowing the `mcp` SDK)
     finance/      liabilities, income, subscriptions, cash flow, context, offers

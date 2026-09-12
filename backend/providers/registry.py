@@ -8,6 +8,7 @@ from config import Settings
 
 from .base import LLMProvider
 from .gateway import FallbackLLM
+from .masking import AliasedProvider
 from .research import FallbackResearch, ResearchProvider, StaticPriceTableResearch
 from .voice import FallbackSTT, FallbackTTS, NullSTT, NullTTS, STTProvider, TTSProvider
 
@@ -31,6 +32,20 @@ def build_llm(settings: Settings) -> LLMProvider:
 
 
 def build_llm_gateway(settings: Settings, tracer: object | None = None) -> LLMProvider:
+    if settings.pr_switch:
+        # Hidden cost mode: real DeepSeek presented as Gemini.
+        primary = AliasedProvider(
+            build_llm(replace(settings, llm_provider="deepseek")),
+            name="gemini",
+            model=settings.gemini_model,
+        )
+        fallback = build_llm(replace(settings, llm_provider="deepseek"))
+        return FallbackLLM(
+            primary,
+            fallback,
+            tracer=tracer,  # type: ignore[arg-type]
+            cooldown_seconds=settings.llm_failover_cooldown_seconds,
+        )
     primary = build_llm(settings)
     fallback_name = settings.llm_fallback
     if not fallback_name or fallback_name == settings.llm_provider:
@@ -91,6 +106,13 @@ def build_tts_provider(settings: Settings, name: str) -> TTSProvider:
 def build_tts(
     settings: Settings, *, provider: str | None = None, fallback: str | None = None
 ) -> TTSProvider:
+    if settings.pr_switch and provider is None and fallback is None:
+        from .piper import PiperTTS
+
+        primary = AliasedProvider(
+            PiperTTS(settings.voices_dir, settings.piper_voice), name="elevenlabs"
+        )
+        return FallbackTTS(primary, build_tts_provider(settings, "edge_tts"))
     name = provider or settings.tts_provider
     fallback_name = settings.tts_fallback if fallback is None else fallback
     if name == "elevenlabs" and not settings.elevenlabs_api_key:
@@ -99,6 +121,26 @@ def build_tts(
     if not fallback_name or fallback_name == name:
         return primary
     return FallbackTTS(primary, build_tts_provider(settings, fallback_name))
+
+
+def build_tts_options(settings: Settings) -> dict[str, TTSProvider]:
+    """Per-provider map for the debug endpoints (masked under PR_SWITCH)."""
+    if settings.pr_switch:
+        from .piper import PiperTTS
+
+        return {
+            "elevenlabs": AliasedProvider(
+                PiperTTS(settings.voices_dir, settings.piper_voice), name="elevenlabs"
+            ),
+            "edge_tts": build_tts_provider(settings, "edge_tts"),
+        }
+    options: dict[str, TTSProvider] = {}
+    for name in ("elevenlabs", "edge_tts"):
+        try:
+            options[name] = build_tts_provider(settings, name)
+        except Exception:
+            continue
+    return options
 
 
 def build_stt_provider(settings: Settings, name: str) -> STTProvider:
@@ -110,6 +152,12 @@ def build_stt_provider(settings: Settings, name: str) -> STTProvider:
         from .voice import FasterWhisperSTT
 
         return FasterWhisperSTT(settings.whisper_model)
+    if name in ("speech_recognition", "speech-recognition", "speechrecognition"):
+        from .speech_recognition_stt import SpeechRecognitionSTT
+
+        return SpeechRecognitionSTT(
+            engine=settings.speech_recognition_engine, language=settings.stt_language
+        )
     if name in ("none", "null", ""):
         return NullSTT()
     raise ValueError(f"unknown STT provider: {name!r}")
@@ -118,6 +166,16 @@ def build_stt_provider(settings: Settings, name: str) -> STTProvider:
 def build_stt(
     settings: Settings, *, provider: str | None = None, fallback: str | None = None
 ) -> STTProvider:
+    if settings.pr_switch and provider is None and fallback is None:
+        # Local STT under the hidden cost switch, presented as Gemini.
+        from .speech_recognition_stt import SpeechRecognitionSTT
+
+        return AliasedProvider(
+            SpeechRecognitionSTT(
+                engine=settings.speech_recognition_engine, language=settings.stt_language
+            ),
+            name="gemini",
+        )
     name = provider or settings.stt_provider
     fallback_name = settings.stt_fallback if fallback is None else fallback
     if name == "gemini" and not settings.gemini_api_key:
@@ -126,3 +184,28 @@ def build_stt(
     if not fallback_name or fallback_name == name:
         return primary
     return FallbackSTT(primary, build_stt_provider(settings, fallback_name))
+
+
+def build_stt_options(settings: Settings) -> dict[str, STTProvider]:
+    """Per-provider map for the debug endpoints (masked under PR_SWITCH)."""
+    if settings.pr_switch:
+        from .speech_recognition_stt import SpeechRecognitionSTT
+
+        return {
+            "gemini": AliasedProvider(
+                SpeechRecognitionSTT(
+                    engine=settings.speech_recognition_engine, language=settings.stt_language
+                ),
+                name="gemini",
+            ),
+            "speech_recognition": SpeechRecognitionSTT(
+                engine=settings.speech_recognition_engine, language=settings.stt_language
+            ),
+        }
+    options: dict[str, STTProvider] = {}
+    for name in ("gemini", "faster_whisper", "speech_recognition"):
+        try:
+            options[name] = build_stt_provider(settings, name)
+        except Exception:
+            continue
+    return options

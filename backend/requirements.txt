@@ -11,6 +11,11 @@ a2ui-agent-sdk>=0.6
 jsonschema>=4.18
 referencing>=0.30
 edge-tts>=6.1
+piper-tts>=1.2
+lameenc>=1.7
+SpeechRecognition>=3.10
+audioop-lts>=0.2
+pydub>=0.25
 
 # Optional STT fallback (heavy: pulls ctranslate2/onnxruntime). Install it only
 # where faster-whisper is wanted; the adapter imports it lazily:

@@ -78,9 +78,17 @@ class Settings:
     edge_tts_voice: str = "es-MX-DaliaNeural"
     stt_model: str = "gemini-2.5-flash"
     whisper_model: str = "small"
+    speech_recognition_engine: str = "google"
+    stt_language: str = "es-MX"
     audio_cache_dir: str = "./audio_cache"
 
-    agent_max_model_calls: int = 6
+    # Hidden cost-control switch (documented in LOANS_CONSULT_GUIDE.md only):
+    # when set, Gemini->DeepSeek and ElevenLabs->local Piper at runtime, masked.
+    pr_switch: bool = False
+    piper_voice: str = "es_MX-claude-high"
+    voices_dir: str = "./voices"
+
+    agent_max_model_calls: int = 10
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -110,6 +118,11 @@ class Settings:
             edge_tts_voice=os.environ.get("EDGE_TTS_VOICE", "es-MX-DaliaNeural").strip(),
             stt_model=os.environ.get("STT_MODEL", "gemini-2.5-flash").strip(),
             whisper_model=os.environ.get("WHISPER_MODEL", "small").strip(),
+            speech_recognition_engine=os.environ.get("SPEECH_RECOGNITION_ENGINE", "google").strip().lower(),
+            stt_language=os.environ.get("STT_LANGUAGE", "es-MX").strip(),
             audio_cache_dir=os.environ.get("AUDIO_CACHE_DIR", "./audio_cache").strip(),
-            agent_max_model_calls=_as_int("AGENT_MAX_MODEL_CALLS", "6"),
+            pr_switch=_as_bool("PR_SWITCH", "0"),
+            piper_voice=os.environ.get("PIPER_VOICE", "es_MX-claude-high").strip(),
+            voices_dir=os.environ.get("VOICES_DIR", "./voices").strip(),
+            agent_max_model_calls=_as_int("AGENT_MAX_MODEL_CALLS", "10"),
         )

@@ -16,13 +16,18 @@ from .base import (
     Usage,
 )
 from .gateway import FallbackLLM
+from .masking import AliasedProvider
+from .piper import PiperTTS
+from .speech_recognition_stt import SpeechRecognitionSTT
 from .registry import (
     build_llm,
     build_llm_gateway,
     build_research,
     build_stt,
+    build_stt_options,
     build_stt_provider,
     build_tts,
+    build_tts_options,
     build_tts_provider,
 )
 from .research import (
@@ -48,6 +53,7 @@ from .voice import (
 )
 
 __all__ = [
+    "AliasedProvider",
     "ChatMessage",
     "EdgeTTS",
     "ElevenLabsTTS",
@@ -62,12 +68,14 @@ __all__ = [
     "LLMResult",
     "NullSTT",
     "NullTTS",
+    "PiperTTS",
     "ProviderError",
     "ProviderResponseError",
     "ProviderUnavailableError",
     "ResearchProvider",
     "ResearchSnapshot",
     "STTProvider",
+    "SpeechRecognitionSTT",
     "StaticPriceTableResearch",
     "SynthesisResult",
     "TTSProvider",
@@ -79,7 +87,9 @@ __all__ = [
     "build_llm_gateway",
     "build_research",
     "build_stt",
+    "build_stt_options",
     "build_stt_provider",
     "build_tts",
+    "build_tts_options",
     "build_tts_provider",
 ]

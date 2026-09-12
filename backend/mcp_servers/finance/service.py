@@ -246,3 +246,34 @@ async def accept_offer(
             "Revisa tu primer pago en la app",
         ],
     }
+
+
+async def get_credit_history(
+    database: DatabasePort, user_id: str, *, months: int = 6
+) -> dict[str, Any]:
+    """Compact credit picture for the loans consult prompt (not the A2UI model)."""
+    profile = await get_profile(database, user_id)
+    credits = await get_liabilities(database, user_id)
+    cash_flow = await get_cash_flow(database, user_id, months)
+    rows = await database.fetch_all(
+        "SELECT substr(occurred_on, 1, 7) AS period, category, "
+        "SUM(CASE WHEN direction = 'out' THEN amount ELSE 0 END) AS spent "
+        "FROM transactions WHERE user_id = ? GROUP BY period, category "
+        "ORDER BY period DESC, spent DESC",
+        (user_id,),
+    )
+    spending: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        spending.setdefault(row["period"], []).append(
+            {"category": row["category"], "spent": round(row["spent"], 2)}
+        )
+    return {
+        "profile": profile,
+        "credits": credits,
+        "totals": {
+            "debt": round(sum(item["balance"] for item in credits), 2),
+            "minPayment": round(sum(item["minPayment"] for item in credits), 2),
+        },
+        "monthlyCashFlow": cash_flow["months"],
+        "spendingByCategory": spending,
+    }

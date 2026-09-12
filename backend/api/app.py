@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from agent.negotiation import NegotiationService
+from agent.loans import LoansConsultService
 from agent.service import AgentService
 from config import Settings, load_dotenv
 from db.local_sqlite import LocalSQLiteDatabase
@@ -30,9 +31,9 @@ from providers.registry import (
     build_llm_gateway,
     build_research,
     build_stt,
-    build_stt_provider,
+    build_stt_options,
     build_tts,
-    build_tts_provider,
+    build_tts_options,
 )
 from providers.research import ResearchProvider
 from providers.voice import STTProvider, TTSProvider
@@ -41,6 +42,7 @@ from .routers import (
     action,
     audio,
     debug,
+    loans,
     message,
     negotiation,
     saving_bags,
@@ -48,17 +50,6 @@ from .routers import (
     ui,
     voice,
 )
-
-
-def _provider_options(settings: Settings, names: tuple[str, ...], builder) -> dict:
-    """Build individually-addressable providers so an endpoint can force one."""
-    options: dict = {}
-    for name in names:
-        try:
-            options[name] = builder(settings, name)
-        except Exception:
-            continue
-    return options
 
 
 def create_app(
@@ -82,11 +73,11 @@ def create_app(
         research_provider = research or build_research(resolved)
         tts_provider = tts or build_tts(resolved)
         stt_provider = stt or build_stt(resolved)
-        resolved_tts_options = tts_options if tts_options is not None else _provider_options(
-            resolved, ("elevenlabs", "edge_tts"), build_tts_provider
+        resolved_tts_options = (
+            tts_options if tts_options is not None else build_tts_options(resolved)
         )
-        resolved_stt_options = stt_options if stt_options is not None else _provider_options(
-            resolved, ("gemini", "faster_whisper"), build_stt_provider
+        resolved_stt_options = (
+            stt_options if stt_options is not None else build_stt_options(resolved)
         )
         toolbox = InProcessToolbox(
             {
@@ -117,6 +108,7 @@ def create_app(
             tracer=tracer,
             max_model_calls=resolved.agent_max_model_calls,
         )
+        loans_service = LoansConsultService(provider=llm, toolbox=toolbox, tracer=tracer)
         app.state.settings = resolved
         app.state.database = database
         app.state.tracer = tracer
@@ -127,6 +119,7 @@ def create_app(
         app.state.stt = stt_provider
         app.state.agent_service = agent_service
         app.state.negotiation_service = negotiation_service
+        app.state.loans_service = loans_service
         try:
             yield
         finally:
@@ -146,6 +139,7 @@ def create_app(
     app.include_router(saving_bags.router)
     app.include_router(ui.router)
     app.include_router(audio.router)
+    app.include_router(loans.router)
     if resolved.enable_debug_endpoints:
         # Diagnostics only: not part of the frozen frontend contract (INV-023).
         app.include_router(voice.router)
