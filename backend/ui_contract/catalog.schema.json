@@ -1,0 +1,323 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://amitie.mx/a2ui/v0_9/catalogs/standard/catalog.json",
+  "title": "La Mesa Standard Catalog",
+  "description": "A2UI v0.9 catalog for the La Mesa M3 subset. Components are implemented by the frontend. Human contract: A2UI_CATALOG.md.",
+  "catalogId": "amitie.standard.v1",
+  "functions": {},
+  "$defs": {
+    "CatalogComponentCommon": {
+      "type": "object",
+      "properties": {
+        "weight": {
+          "type": "number",
+          "description": "Relative weight within a Row or Column. May only be set on a direct child of a Row or Column."
+        }
+      }
+    },
+    "anyFunction": {
+      "oneOf": []
+    },
+    "anyComponent": {
+      "oneOf": [
+        { "$ref": "#/components/Column" },
+        { "$ref": "#/components/Row" },
+        { "$ref": "#/components/Card" },
+        { "$ref": "#/components/Text" },
+        { "$ref": "#/components/Heading" },
+        { "$ref": "#/components/Divider" },
+        { "$ref": "#/components/Badge" },
+        { "$ref": "#/components/Button" },
+        { "$ref": "#/components/ChoiceGroup" },
+        { "$ref": "#/components/Slider" },
+        { "$ref": "#/components/DebtNode" },
+        { "$ref": "#/components/TradeoffScale" },
+        { "$ref": "#/components/BreakAlert" },
+        { "$ref": "#/components/PlanTable" }
+      ]
+    }
+  },
+  "components": {
+    "Column": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "Column" },
+            "children": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ChildList" },
+            "gap": { "type": "number" },
+            "align": { "type": "string", "enum": ["start", "center", "end"] },
+            "justify": { "type": "string", "enum": ["start", "center", "between"] }
+          },
+          "required": ["component", "children"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Row": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "Row" },
+            "children": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ChildList" },
+            "gap": { "type": "number" },
+            "align": { "type": "string", "enum": ["start", "center", "end"] },
+            "justify": { "type": "string", "enum": ["start", "center", "between"] }
+          },
+          "required": ["component", "children"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Card": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "Card" },
+            "children": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ChildList" },
+            "title": { "type": "string" },
+            "tone": { "type": "string", "enum": ["neutral", "positive", "warning", "danger"] }
+          },
+          "required": ["component"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Text": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "Text" },
+            "text": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString" },
+            "variant": { "type": "string", "enum": ["body", "muted", "caption"] },
+            "tone": { "type": "string" }
+          },
+          "required": ["component", "text"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Heading": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "Heading" },
+            "text": { "type": "string" },
+            "level": { "type": "integer", "enum": [1, 2, 3] }
+          },
+          "required": ["component", "text"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Divider": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "Divider" }
+          },
+          "required": ["component"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Badge": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "Badge" },
+            "label": { "type": "string" },
+            "tone": { "type": "string", "enum": ["neutral", "positive", "warning", "danger"] }
+          },
+          "required": ["component", "label"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Button": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "Button" },
+            "label": { "type": "string" },
+            "variant": { "type": "string", "enum": ["primary", "secondary", "ghost", "danger"] },
+            "action": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/Action" }
+          },
+          "required": ["component", "label", "action"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "ChoiceGroup": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "ChoiceGroup" },
+            "options": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "value": { "type": "string" },
+                  "label": { "type": "string" },
+                  "description": { "type": "string" }
+                },
+                "required": ["value", "label"],
+                "additionalProperties": false
+              }
+            },
+            "value": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString" },
+            "multiple": { "type": "boolean" },
+            "action": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/Action" }
+          },
+          "required": ["component", "options", "action"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Slider": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "Slider" },
+            "min": { "type": "number" },
+            "max": { "type": "number" },
+            "step": { "type": "number" },
+            "value": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "label": { "type": "string" },
+            "action": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/Action" }
+          },
+          "required": ["component", "min", "max", "action"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "DebtNode": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "DebtNode" },
+            "creditor": { "type": "string" },
+            "balance": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "apr": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "minPayment": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "kind": { "type": "string" },
+            "badge": { "type": "string" }
+          },
+          "required": ["component", "creditor", "balance", "apr", "minPayment"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "TradeoffScale": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "TradeoffScale" },
+            "leftLabel": { "type": "string" },
+            "rightLabel": { "type": "string" },
+            "value": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "action": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/Action" }
+          },
+          "required": ["component", "leftLabel", "rightLabel", "action"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "BreakAlert": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "BreakAlert" },
+            "month": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "shortfall": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "reasons": { "type": "array", "items": { "type": "string" } },
+            "assumptions": { "type": "array", "items": { "type": "string" } }
+          },
+          "required": ["component", "month", "shortfall"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "PlanTable": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "PlanTable" },
+            "months": {
+              "oneOf": [
+                { "type": "array", "items": { "type": "object" } },
+                { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DataBinding" }
+              ]
+            },
+            "breakMonth": {
+              "oneOf": [
+                { "type": "number" },
+                { "type": "null" },
+                { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DataBinding" }
+              ]
+            }
+          },
+          "required": ["component", "months"]
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

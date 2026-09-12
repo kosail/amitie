@@ -1,0 +1,83 @@
+"""FastAPI application factory.
+
+The database and tracer are created eagerly (so `TraceMiddleware` can be
+mounted); the MCP toolbox and agent are built in the lifespan, where async
+setup is allowed.
+"""
+
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from agent.service import AgentService
+from config import Settings, load_dotenv
+from db.local_sqlite import LocalSQLiteDatabase
+from db.schema import apply_schema
+from mcp_servers.finance.server import build_finance_server
+from mcp_servers.toolbox import InProcessToolbox
+from mcp_servers.ui.server import build_ui_server
+from observability.middleware import TraceMiddleware
+from observability.tracing import Tracer
+from providers.base import LLMProvider
+from providers.registry import build_llm_gateway
+
+from .routers import action, debug, message, session, ui
+
+
+def create_app(
+    *, provider: LLMProvider | None = None, settings: Settings | None = None
+) -> FastAPI:
+    load_dotenv()
+    resolved = settings or Settings.from_env()
+    database = LocalSQLiteDatabase(resolved.database_path)
+    tracer = Tracer(database)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        await apply_schema(database)
+        toolbox = InProcessToolbox(
+            {
+                "finance": build_finance_server(database),
+                "ui": build_ui_server(database),
+            }
+        )
+        await toolbox.__aenter__()
+        llm = provider or build_llm_gateway(resolved, tracer=tracer)
+        agent_service = AgentService(
+            provider=llm,
+            toolbox=toolbox,
+            tracer=tracer,
+            max_model_calls=resolved.agent_max_model_calls,
+        )
+        app.state.settings = resolved
+        app.state.database = database
+        app.state.tracer = tracer
+        app.state.toolbox = toolbox
+        app.state.agent_service = agent_service
+        try:
+            yield
+        finally:
+            await toolbox.__aexit__(None, None, None)
+            await database.close()
+
+    app = FastAPI(title="La Mesa API", version="0.1.0", lifespan=lifespan)
+    app.add_middleware(
+        CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
+    )
+    app.add_middleware(TraceMiddleware, tracer=tracer)
+
+    app.include_router(session.router)
+    app.include_router(message.router)
+    app.include_router(action.router)
+    app.include_router(ui.router)
+    app.include_router(debug.router)
+
+    @app.get("/healthz")
+    async def healthz() -> dict[str, str]:
+        return {"status": "ok"}
+
+    return app

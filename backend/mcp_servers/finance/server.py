@@ -1,0 +1,100 @@
+"""Finance MCP server (read-only tools)."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from db.port import DatabasePort
+from mcp.server import MCPServer
+
+from . import service
+
+
+def build_finance_server(database: DatabasePort) -> MCPServer:
+    server = MCPServer("finance")
+
+    @server.tool()
+    async def get_profile(user_id: str) -> dict[str, Any]:
+        """Return the user's profile and accessibility flags."""
+        return {"profile": await service.get_profile(database, user_id)}
+
+    @server.tool()
+    async def get_liabilities(user_id: str) -> dict[str, Any]:
+        """Return the user's liabilities with totals, ordered by balance descending."""
+        items = await service.get_liabilities(database, user_id)
+        return {
+            "liabilities": items,
+            "totalDebt": round(sum(item["balance"] for item in items), 2),
+            "totalMinPayment": round(sum(item["minPayment"] for item in items), 2),
+        }
+
+    @server.tool()
+    async def get_income_streams(user_id: str) -> dict[str, Any]:
+        """Return the user's income streams."""
+        return {"incomeStreams": await service.get_income_streams(database, user_id)}
+
+    @server.tool()
+    async def get_subscriptions(user_id: str) -> dict[str, Any]:
+        """Return the user's subscriptions and their monthly total."""
+        items = await service.get_subscriptions(database, user_id)
+        return {
+            "subscriptions": items,
+            "subscriptionTotal": round(sum(item["amount"] for item in items), 2),
+        }
+
+    @server.tool()
+    async def get_cash_flow(user_id: str, months: int = 6) -> dict[str, Any]:
+        """Return monthly income/expense aggregates and the average surplus."""
+        return {"cashFlow": await service.get_cash_flow(database, user_id, months)}
+
+    @server.tool()
+    async def get_financial_context(user_id: str) -> dict[str, Any]:
+        """Return the full financial context used as the A2UI data model."""
+        return {"context": await service.financial_context(database, user_id)}
+
+    @server.tool()
+    async def simulate_plan(
+        user_id: str,
+        strategy: str = "avalanche",
+        extra_payment: float = 0.0,
+        extra_income: float = 0.0,
+        expense_reduction: float = 0.0,
+        horizon_months: int = 36,
+        events: dict[str, float] | None = None,
+    ) -> dict[str, Any]:
+        """Deterministically simulate a debt plan and report any break. The model
+        chooses the strategy and parameters; the engine computes every number."""
+        return await service.simulate_plan(
+            database,
+            user_id,
+            strategy=strategy,
+            extra_payment=extra_payment,
+            extra_income=extra_income,
+            expense_reduction=expense_reduction,
+            horizon_months=horizon_months,
+            events=events,
+        )
+
+    @server.tool()
+    async def detect_plan_breaks(
+        user_id: str,
+        strategy: str = "avalanche",
+        extra_payment: float = 0.0,
+        extra_income: float = 0.0,
+        expense_reduction: float = 0.0,
+        horizon_months: int = 36,
+        events: dict[str, float] | None = None,
+    ) -> dict[str, Any]:
+        """Report the first month the plan cannot be covered (if any)."""
+        return await service.detect_plan_breaks(
+            database,
+            user_id,
+            strategy=strategy,
+            extra_payment=extra_payment,
+            extra_income=extra_income,
+            expense_reduction=expense_reduction,
+            horizon_months=horizon_months,
+            events=events,
+        )
+
+    return server

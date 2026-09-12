@@ -1,0 +1,25 @@
+# Secrets (INV-040) — never commit
+backend/.env
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Data / artifacts
+backend/data/
+*.sqlite3
+*.db
+backend/audio_cache/*
+!backend/audio_cache/.gitkeep
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

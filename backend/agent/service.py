@@ -1,0 +1,177 @@
+"""Agent turn service: ADK orchestrator over the in-process MCP toolbox."""
+
+from __future__ import annotations
+
+import json
+import time
+from typing import Any
+
+from google.adk.agents.llm_agent import Agent
+from google.adk.agents.run_config import RunConfig
+from google.adk.runners import InMemoryRunner
+from google.genai import types
+
+from mcp_servers.toolbox import Toolbox
+from observability.context import current_trace_id
+from observability.tracing import Tracer, TraceEvent, new_trace_id
+from providers.base import LLMProvider, ProviderError
+from ui_contract.prompt import build_system_prompt
+
+from .model import GatewayLlm, ModelCallLimitError
+from .tools import build_adk_tools
+
+APP_NAME = "lamina"
+AGENT_NAME = "lamina"
+
+ROLE_DESCRIPTION = (
+    "Eres La Mesa, un agente financiero para usuarios en México. "
+    "Diagnosticas su situación de deuda y decides qué interfaz necesita el usuario."
+)
+UI_DESCRIPTION = (
+    "Flujo obligatorio: (1) llama get_financial_context con el user_id indicado; "
+    "(2) simula el plan con simulate_plan (elige la estrategia) y confirma con detect_plan_breaks; "
+    "(3) si el plan se rompe, DEBES emitir proactivamente BreakAlert + PlanTable (el agente descubre "
+    "el problema sin que el usuario lo pida); (4) si el usuario pide un ajuste, vuelve a simular con "
+    "simulate_plan usando extra_income/expense_reduction/extra_payment y reemite la superficie sin "
+    "BreakAlert si el plan ya no se rompe; (5) emite EXACTAMENTE una superficie llamando a persist_ui "
+    "con componentes que usen bindings hacia /plan/... y el contexto financiero, e incluye el objeto "
+    "simulation (strategy, extra_payment, extra_income, expense_reduction, horizon_months, events). "
+    "No escribas la interfaz en texto; el texto es solo para el usuario."
+)
+
+
+class AgentService:
+    def __init__(
+        self,
+        *,
+        provider: LLMProvider,
+        toolbox: Toolbox,
+        tracer: Tracer | None = None,
+        max_model_calls: int = 6,
+    ) -> None:
+        self._toolbox = toolbox
+        self._tracer = tracer
+        self._max_calls = max_model_calls
+        self._model = GatewayLlm(model="gateway", provider=provider, max_calls=max_model_calls)
+        self._runner: InMemoryRunner | None = None
+        self._captured: dict[str, dict[str, Any]] = {}
+
+    async def _ensure_runner(self) -> InMemoryRunner:
+        if self._runner is None:
+            tools = await build_adk_tools(self._toolbox, on_result=self._capture)
+            agent = Agent(
+                name=AGENT_NAME,
+                model=self._model,
+                instruction=build_system_prompt(
+                    role_description=ROLE_DESCRIPTION, ui_description=UI_DESCRIPTION
+                ),
+                tools=tools,
+            )
+            self._runner = InMemoryRunner(agent=agent, app_name=APP_NAME)
+        return self._runner
+
+    def _capture(self, name: str, result: dict[str, Any]) -> None:
+        if name == "persist_ui":
+            self._captured[name] = result
+
+    async def _ensure_session(
+        self, runner: InMemoryRunner, session_id: str, user_id: str
+    ) -> None:
+        session = await runner.session_service.get_session(
+            app_name=APP_NAME, user_id=user_id, session_id=session_id
+        )
+        if session is None:
+            await runner.session_service.create_session(
+                app_name=APP_NAME, user_id=user_id, session_id=session_id
+            )
+
+    async def run_turn(
+        self,
+        *,
+        session_id: str,
+        user_id: str,
+        text: str | None = None,
+        action: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        started = time.perf_counter()
+        runner = await self._ensure_runner()
+        await self._ensure_session(runner, session_id, user_id)
+
+        if action is not None:
+            payload = {
+                "user_id": user_id,
+                "action": action.get("name"),
+                "surface_id": action.get("surface_id"),
+                "context": action.get("context", {}),
+            }
+            message_text = (
+                "El usuario interactuó con la interfaz. Contexto de la acción: "
+                + json.dumps(payload, ensure_ascii=False)
+            )
+        else:
+            message_text = f"user_id: {user_id}\nMensaje del usuario: {text or ''}"
+
+        self._model.reset_calls()
+        self._captured.clear()
+        assistant_texts: list[str] = []
+        error: str | None = None
+        try:
+            async for event in runner.run_async(
+                user_id=user_id,
+                session_id=session_id,
+                new_message=types.Content(
+                    role="user", parts=[types.Part.from_text(text=message_text)]
+                ),
+                run_config=RunConfig(max_llm_calls=self._max_calls),
+            ):
+                for part in getattr(event.content, "parts", None) or []:
+                    if getattr(part, "text", None):
+                        assistant_texts.append(part.text)
+        except ModelCallLimitError as exc:
+            error = str(exc)
+        except ProviderError as exc:
+            error = str(exc)
+        except Exception as exc:  # keep the API resilient to ADK/tool failures
+            error = f"{type(exc).__name__}: {exc}"
+
+        assistant_text = "\n".join(text for text in assistant_texts if text).strip()
+        await self._trace(started, error=error)
+
+        if error is not None:
+            return {"status": "error", "message": error, "assistant_text": assistant_text}
+
+        captured = self._captured.get("persist_ui")
+        if captured is None:
+            return {
+                "status": "error",
+                "issues": ["the agent did not call persist_ui"],
+                "assistant_text": assistant_text,
+            }
+        if captured.get("status") != "ok":
+            return {
+                "status": "error",
+                "issues": captured.get("issues", []),
+                "assistant_text": assistant_text,
+            }
+        return {
+            "status": "ok",
+            "surface_id": captured.get("surface_id"),
+            "a2ui": captured.get("a2ui", []),
+            "assistant_text": assistant_text,
+        }
+
+    async def _trace(self, started: float, *, error: str | None) -> None:
+        if self._tracer is None:
+            return
+        trace_id = current_trace_id() or new_trace_id()
+        await self._tracer.record(
+            trace_id,
+            TraceEvent(
+                kind="agent",
+                name="turn",
+                provider=getattr(self._model.provider, "name", "gateway"),
+                model=self._model.model,
+                latency_ms=int((time.perf_counter() - started) * 1000),
+                error=error,
+            ),
+        )

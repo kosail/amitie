@@ -1,0 +1,134 @@
+{
+  "catalogId": "amitie.standard.v1",
+  "version": "v0.9",
+  "description": "La Mesa standard catalog — M3 subset. Components are implemented by the frontend team. See A2UI_CATALOG.md for the human contract.",
+  "messages": ["createSurface", "updateComponents", "updateDataModel", "deleteSurface"],
+  "binding": {
+    "syntax": "json-pointer",
+    "valueShape": { "path": "string" }
+  },
+  "actions": [
+    "select_strategy",
+    "tune_tradeoff",
+    "request_simulation",
+    "approve_plan",
+    "toggle_assumption",
+    "take_control",
+    "accept_offer"
+  ],
+  "components": {
+    "Column": {
+      "required": ["children"],
+      "props": {
+        "children": "idArray",
+        "gap": "number",
+        "align": "enum:start,center,end",
+        "justify": "enum:start,center,between"
+      }
+    },
+    "Row": {
+      "required": ["children"],
+      "props": {
+        "children": "idArray",
+        "gap": "number",
+        "align": "enum:start,center,end",
+        "justify": "enum:start,center,between"
+      }
+    },
+    "Card": {
+      "required": [],
+      "props": {
+        "children": "idArray",
+        "title": "string",
+        "tone": "enum:neutral,positive,warning,danger"
+      }
+    },
+    "Text": {
+      "required": ["text"],
+      "props": {
+        "text": "dynamicString",
+        "variant": "enum:body,muted,caption",
+        "tone": "string"
+      }
+    },
+    "Heading": {
+      "required": ["text"],
+      "props": {
+        "text": "string",
+        "level": "enum:1,2,3"
+      }
+    },
+    "Divider": { "required": [], "props": {} },
+    "Badge": {
+      "required": ["label"],
+      "props": {
+        "label": "string",
+        "tone": "enum:neutral,positive,warning,danger"
+      }
+    },
+    "Button": {
+      "required": ["label", "action"],
+      "props": {
+        "label": "string",
+        "variant": "enum:primary,secondary,ghost,danger",
+        "action": "action"
+      }
+    },
+    "ChoiceGroup": {
+      "required": ["options", "action"],
+      "props": {
+        "options": "array",
+        "value": "dynamicString",
+        "multiple": "boolean",
+        "action": "action"
+      }
+    },
+    "Slider": {
+      "required": ["min", "max", "action"],
+      "props": {
+        "min": "number",
+        "max": "number",
+        "step": "number",
+        "value": "dynamicNumber",
+        "label": "string",
+        "action": "action"
+      }
+    },
+    "DebtNode": {
+      "required": ["creditor", "balance", "apr", "minPayment"],
+      "props": {
+        "creditor": "string",
+        "balance": "dynamicNumber",
+        "apr": "dynamicNumber",
+        "minPayment": "dynamicNumber",
+        "kind": "string",
+        "badge": "string"
+      }
+    },
+    "TradeoffScale": {
+      "required": ["leftLabel", "rightLabel", "action"],
+      "props": {
+        "leftLabel": "string",
+        "rightLabel": "string",
+        "value": "dynamicNumber",
+        "action": "action"
+      }
+    },
+    "BreakAlert": {
+      "required": ["month", "shortfall"],
+      "props": {
+        "month": "dynamicNumber",
+        "shortfall": "dynamicNumber",
+        "reasons": "array",
+        "assumptions": "array"
+      }
+    },
+    "PlanTable": {
+      "required": ["months"],
+      "props": {
+        "months": "any",
+        "breakMonth": "any"
+      }
+    }
+  }
+}
