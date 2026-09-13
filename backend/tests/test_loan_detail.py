@@ -144,12 +144,12 @@ class LoanDetailServiceTest(unittest.TestCase):
                     research = CountingResearch()
                     service = self._service(database, toolbox, "", research)
 
-                    first = await service.get_or_create(user_id="u_ana", loan_id=loan_id)
+                    first = await service.get_or_create(user_id="u_ana", entity="loan", entity_id=loan_id)
                     self.assertEqual(first["status"], "ok")
                     self.assertEqual(first["source"], "generated")
                     self.assertEqual(research.calls, 1)
 
-                    second = await service.get_or_create(user_id="u_ana", loan_id=loan_id)
+                    second = await service.get_or_create(user_id="u_ana", entity="loan", entity_id=loan_id)
                     self.assertEqual(second["source"], "stored")
                     self.assertEqual(research.calls, 1)
 
@@ -184,7 +184,7 @@ class LoanDetailServiceTest(unittest.TestCase):
                     loan_id = created["loan"]["id"]
                     research = CountingResearch()
                     service = self._service(database, toolbox, "", research)
-                    result = await service.get_or_create(user_id="u_ana", loan_id=loan_id)
+                    result = await service.get_or_create(user_id="u_ana", entity="loan", entity_id=loan_id)
                     self.assertEqual(result["status"], "ok")
                     self.assertEqual(research.calls, 0)
 
@@ -201,7 +201,7 @@ class LoanDetailServiceTest(unittest.TestCase):
                 await seed(database)
                 async with _toolbox(database) as toolbox:
                     service = self._service(database, toolbox, "", CountingResearch())
-                    result = await service.get_or_create(user_id="u_ana", loan_id="loan_nope")
+                    result = await service.get_or_create(user_id="u_ana", entity="loan", entity_id="loan_nope")
                     self.assertEqual(result["status"], "not_found")
 
                 await database.close()
@@ -284,3 +284,118 @@ class LoanDetailApiTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+LOAN_SUMMARY = {
+    "id": "summary",
+    "component": "LoanSummary",
+    "amount": {"path": "/loan/amount"},
+    "months": {"path": "/loan/termMonths"},
+    "monthlyPayment": {"path": "/loan/monthlyPayment"},
+}
+
+LIABILITY_SUMMARY = {
+    "id": "summary",
+    "component": "LiabilitySummary",
+    "creditor": {"path": "/liability/creditor"},
+    "balance": {"path": "/liability/balance"},
+}
+
+
+class CreditDetailGuardTest(unittest.TestCase):
+    def _app_service(self, database, toolbox, payload):
+        provider = ScriptedProvider(json.dumps(payload))
+        return LoanDetailService(provider=provider, toolbox=toolbox, research=CountingResearch())
+
+    def test_strips_offer_semantics_but_keeps_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            database = LocalSQLiteDatabase(Path(tmp) / "guard.sqlite3")
+
+            async def run() -> None:
+                await apply_schema(database)
+                await seed(database)
+                async with _toolbox(database) as toolbox:
+                    created = await toolbox.call(
+                        "create_loan",
+                        {"user_id": "u_ana", "amount": 20000, "term_months": 12, "purpose": "viaje"},
+                    )
+                    loan_id = created["loan"]["id"]
+                    payload = {
+                        "response_text": "ok",
+                        "components": [
+                            {"id": "root", "component": "Column", "children": ["summary", "offer", "btn"]},
+                            LOAN_SUMMARY,
+                            {
+                                "id": "offer",
+                                "component": "LoanOffer",
+                                "amount": {"path": "/loan/amount"},
+                                "apr": {"path": "/loan/apr"},
+                                "months": {"path": "/loan/termMonths"},
+                                "monthlyPayment": {"path": "/loan/monthlyPayment"},
+                                "totalInterest": {"path": "/loan/totalInterest"},
+                                "cat": {"path": "/loan/cat"},
+                            },
+                            {
+                                "id": "btn",
+                                "component": "Button",
+                                "label": "Aceptar",
+                                "action": {"event": {"name": "request_loan", "context": {}}},
+                            },
+                        ],
+                    }
+                    service = self._app_service(database, toolbox, payload)
+                    result = await service.get_or_create(
+                        user_id="u_ana", entity="loan", entity_id=loan_id
+                    )
+                    self.assertEqual(result["status"], "ok")
+
+                    row = await database.fetch_one(
+                        "SELECT template_json FROM generated_ui WHERE domain = 'loan_detail' AND entity_id = ?",
+                        (loan_id,),
+                    )
+                    stored = json.loads(row["template_json"])
+                    types = [c.get("component") for c in stored]
+                    self.assertIn("LoanSummary", types)
+                    self.assertNotIn("LoanOffer", types)
+                    self.assertFalse(any("request_loan" in json.dumps(c) for c in stored))
+
+                await database.close()
+
+            asyncio.run(run())
+
+    def test_liability_detail_has_abonar_action(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            database = LocalSQLiteDatabase(Path(tmp) / "liability.sqlite3")
+
+            async def run() -> None:
+                await apply_schema(database)
+                await seed(database)
+                async with _toolbox(database) as toolbox:
+                    listed = await toolbox.call("get_liabilities", {"user_id": "u_ana"})
+                    self.assertTrue(listed["liabilities"])
+                    liability_id = listed["liabilities"][0]["id"]
+                    payload = {
+                        "response_text": "ok",
+                        "components": [
+                            {"id": "root", "component": "Column", "children": ["summary"]},
+                            LIABILITY_SUMMARY,
+                        ],
+                    }
+                    service = self._app_service(database, toolbox, payload)
+                    result = await service.get_or_create(
+                        user_id="u_ana", entity="liability", entity_id=liability_id
+                    )
+                    self.assertEqual(result["status"], "ok")
+                    self.assertEqual(result["source"], "generated")
+
+                    row = await database.fetch_one(
+                        "SELECT template_json FROM generated_ui WHERE domain = 'liability_detail' AND entity_id = ?",
+                        (liability_id,),
+                    )
+                    stored = json.loads(row["template_json"])
+                    self.assertTrue(any(c.get("component") == "LiabilitySummary" for c in stored))
+                    self.assertTrue(any("abonar" in json.dumps(c) for c in stored))
+
+                await database.close()
+
+            asyncio.run(run())

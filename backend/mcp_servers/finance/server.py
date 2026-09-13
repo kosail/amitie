@@ -257,4 +257,9 @@ def build_finance_server(database: DatabasePort, settings: Any | None = None) ->
         """Return one created loan with its stored purpose and terms."""
         return {"loan": await service.get_loan(database, user_id, loan_id)}
 
+    @server.tool()
+    async def get_liability(user_id: str, liability_id: str) -> dict[str, Any]:
+        """Return one liability (credit card / loan debt) for a user."""
+        return {"liability": await service.get_liability(database, user_id, liability_id)}
+
     return server

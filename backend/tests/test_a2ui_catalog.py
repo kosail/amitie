@@ -35,6 +35,8 @@ SHIPPED_SUBSET = {
     "ForecastChart",
     "ScenarioComparison",
     "LoanOffer",
+    "LoanSummary",
+    "LiabilitySummary",
 }
 
 VALID_PAYLOAD = [

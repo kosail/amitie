@@ -62,6 +62,7 @@ All five fields are required. Defined action names:
 | `take_control` | `Button` | User seizes the El Revés negotiation |
 | `accept_offer` | `OfferCard` | Accept a negotiated offer |
 | `request_loan` | `LoanOffer` | User accepts the offered loan (frontend then calls `POST /api/loans`) |
+| `abonar` | `Button` | User makes a payment toward a liability (client-routed to the native payment flow; `POST /api/liabilities/{id}/payment`) |
 | `refresh_bag` | `Button` | *(reserved — Saving Bags pending)* |
 | `adjust_goal` | `Slider`, `TextField` | *(reserved — Saving Bags pending)* |
 
@@ -104,6 +105,8 @@ All five fields are required. Defined action names:
 | `ForecastChart` | `forecast: { period: string, value: number }[] \| binding`, `actual?: { period: string, value: number }[] \| binding`, `title?: string` |
 | `ScenarioComparison` | `scenarios: { label: string, monthlyPayment: number, payoffMonths: number, totalInterest: number, interestSaved?: number, monthsSaved?: number }[] \| binding`, `highlightIndex?: number`, `title?: string` |
 | `LoanOffer` | `amount: number \| binding`, `apr: number \| binding`, `months: number \| binding`, `monthlyPayment: number \| binding`, `totalInterest: number \| binding`, `cat: number \| binding`, `totalCost?: number \| binding`, `schedule?: { month, payment, interest, principal, balance }[] \| binding`, `action?: Action` |
+| `LoanSummary` | **Read-only** summary of an already-granted loan (per-loan detail page): `amount: number \| binding`, `apr?: number \| binding`, `months: number \| binding`, `monthlyPayment: number \| binding`, `totalInterest?: number \| binding`, `totalCost?: number \| binding`, `cat?: number \| binding`, `status?: string \| binding`, `progress?: number \| binding`, `remainingBalance?: number \| binding`, `purpose?: string \| binding`, `tone?: "neutral"\|"positive"\|"warning"\|"danger"`. No action; never an offer. |
+| `LiabilitySummary` | **Read-only** summary of an active liability (per-liability detail page): `creditor: string \| binding`, `kind?: string \| binding`, `principal?: number \| binding`, `balance: number \| binding`, `apr?: number \| binding`, `minPayment?: number \| binding`, `dueDay?: number \| binding`, `progress?: number \| binding`, `status?: string \| binding`, `tone?: "neutral"\|"positive"\|"warning"\|"danger"`. No action. |
 
 ## 7. Persistence, placeholders, and revalidation
 
@@ -124,6 +127,7 @@ Required by milestone:
 - **PENDING TO BE RELEASED:** `CashFlowTimeline`, `GoalJar` (staged with Saving Bags; not emitted).
 - **M8 (added):** `AssumptionChip` (Caja de Cristal).
 - **Loans (added):** `LineChart`, `BarChart`, `ForecastChart`, `ScenarioComparison`, `LoanOffer` (engine-backed offer + risk for the loans consult).
+- **Per-credit detail (added):** `LoanSummary`, `LiabilitySummary` (read-only summaries for the personalized loan/liability detail pages). These pages are **informational**: they never emit `LoanOffer` or `request_loan`; a liability page may emit a `Button` with the `abonar` action.
 
 **Loans terminal subset (mobile-supported).** The loans consult emits only:
 `Column, Row, Card, Text, Heading, Divider, Badge, Button, ProgressBar, List,

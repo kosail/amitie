@@ -333,7 +333,7 @@ async def get_loan_ui(
     service=Depends(get_loan_detail_service),
 ) -> LoanDetailResponse:
     """Personalized per-loan A2UI page: hydrate the stored template or build it once."""
-    result = await service.get_or_create(user_id=user_id, loan_id=loan_id)
+    result = await service.get_or_create(user_id=user_id, entity="loan", entity_id=loan_id)
     if result.get("status") == "not_found":
         raise HTTPException(status_code=404, detail="unknown loan")
     if result.get("status") != "ok":
@@ -342,7 +342,8 @@ async def get_loan_ui(
         )
     return LoanDetailResponse(
         status="ok",
-        loan_id=loan_id,
+        entity="loan",
+        entity_id=loan_id,
         source=result.get("source"),
         catalog_id=result.get("catalog_id"),
         surface_id=result.get("surface_id"),

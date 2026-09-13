@@ -10,9 +10,10 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import date, datetime, timezone
-from typing import Any
+from typing import Any, Mapping
 
 from db.port import DatabasePort
+from engine import amortization
 from engine import audience
 from engine import loan_offer
 from engine import loans_analysis
@@ -1024,30 +1025,166 @@ async def get_loan(database: DatabasePort, user_id: str, loan_id: str) -> dict[s
     return _loan_row(row) if row is not None else None
 
 
+async def get_liability(
+    database: DatabasePort, user_id: str, liability_id: str
+) -> dict[str, Any] | None:
+    row = await database.fetch_one(
+        "SELECT id, creditor, kind, principal, balance, apr, min_payment, due_day, "
+        "nomina_discount, status FROM liabilities WHERE id = ? AND user_id = ?",
+        (liability_id, user_id),
+    )
+    return _liability_row(row) if row is not None else None
+
+
+async def _propose_for_loan(
+    database: DatabasePort, user_id: str, loan: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Re-run the deterministic offer engine for the loan's REAL terms.
+
+    Used only for the risk panel / warnings / capacity against the user's
+    current behavior (INV-015); the authoritative schedule still comes from
+    `terms_for` with the stored terms.
+    """
+    context = await financial_context(database, user_id)
+    accounts = await get_accounts(database, user_id)
+    policies = (await get_lender_policies(database))["policies"]
+    goals = await _saving_goals(database, user_id)
+    history = await _payment_history(database, user_id)
+    return loan_offer.propose_offer(
+        context,
+        accounts=accounts,
+        lender_policies=policies,
+        saving_goals=goals,
+        payment_history=history,
+        requested_amount=float(loan["amount"]),
+        apr=float(loan["apr"]),
+        requested_term=int(loan["termMonths"]),
+    )
+
+
 async def loan_context(database: DatabasePort, user_id: str, loan_id: str) -> dict[str, Any] | None:
     """Fresh, loan-scoped values for hydrating a `loan_detail` surface.
 
     Regenerates the amortization schedule deterministically from the stored loan
-    terms (INV-015) so placeholders/bindings never serve stale values.
+    terms (INV-015), and recomputes the risk panel/warnings against the user's
+    current financial behavior so placeholders/bindings never serve stale data.
     """
     loan = await get_loan(database, user_id, loan_id)
     if loan is None:
         return None
-    schedule = loan_offer.terms_for(
-        float(loan["amount"]),
+    amount = float(loan["amount"])
+    terms = loan_offer.terms_for(
+        amount,
         apr=float(loan["apr"]),
         term_months=int(loan["termMonths"]),
-        opening_fee_pct=(float(loan["openingFee"]) / float(loan["amount"]))
-        if float(loan["amount"]) > 0
-        else loan_offer.DEFAULT_OPENING_FEE_PCT,
-        insurance_fee_pct=(float(loan["insuranceFee"]) / float(loan["amount"]))
-        if float(loan["amount"]) > 0
-        else loan_offer.DEFAULT_INSURANCE_FEE_PCT,
-    )["schedule"]
+        opening_fee_pct=(float(loan["openingFee"]) / amount) if amount > 0 else loan_offer.DEFAULT_OPENING_FEE_PCT,
+        insurance_fee_pct=(float(loan["insuranceFee"]) / amount) if amount > 0 else loan_offer.DEFAULT_INSURANCE_FEE_PCT,
+    )
+    schedule = terms["schedule"]
+    total_interest = float(terms["totalInterest"])
+    total_cost = float(terms["totalCost"])
+    interest_share = (total_interest / total_cost) if total_cost else 0.0
+    proposal = await _propose_for_loan(database, user_id, loan)
     return {
         "loan": loan,
         "schedule": schedule,
-        "remainingBalance": float(loan["amount"]),
+        "distribution": {
+            "schedule": schedule,
+            "monthlyPayment": terms["monthlyPayment"],
+            "totalInterest": total_interest,
+            "totalCost": total_cost,
+            "interestShare": round(interest_share, 4),
+            "principalShare": round(1.0 - interest_share, 4),
+        },
+        "risk": proposal.get("risk"),
+        "warnings": proposal.get("warnings", []),
+        "capacity": proposal.get("capacity"),
+        "remainingBalance": amount,
         "progressPercent": 0,
+        "paidToDate": 0.0,
         "loanId": loan_id,
+    }
+
+
+async def liability_context(
+    database: DatabasePort, user_id: str, liability_id: str
+) -> dict[str, Any] | None:
+    """Fresh, liability-scoped values for hydrating a `liability_detail` surface."""
+    liability = await get_liability(database, user_id, liability_id)
+    if liability is None:
+        return None
+    principal = float(liability["principal"] or 0.0)
+    balance = float(liability["balance"] or 0.0)
+    min_payment = float(liability["minPayment"] or 0.0)
+    apr = float(liability["apr"] or 0.0)
+    plan = amortization.simulate(
+        monthly_income=0.0,
+        monthly_expenses=0.0,
+        liabilities=[
+            amortization.Liability(
+                id=str(liability["id"]),
+                creditor=str(liability.get("creditor") or ""),
+                balance=balance,
+                apr=apr,
+                min_payment=min_payment,
+            )
+        ],
+        strategy="avalanche",
+        horizon_months=60,
+    )
+    schedule = [
+        {
+            "month": snapshot.month,
+            "payment": snapshot.payment,
+            "interest": snapshot.interest,
+            "principal": round(snapshot.payment - snapshot.interest, 2),
+            "balance": snapshot.total_balance,
+        }
+        for snapshot in plan.months
+        if snapshot.total_balance > 0.01 or snapshot.payment > 0.01
+    ]
+    if schedule:
+        schedule.append(
+            {
+                "month": schedule[-1]["month"] + 1,
+                "payment": 0.0,
+                "interest": 0.0,
+                "principal": 0.0,
+                "balance": 0.0,
+            }
+        )
+    profile = await get_profile(database, user_id)
+    income = float((profile or {}).get("monthlyIncome") or 0.0)
+    context = await financial_context(database, user_id)
+    total_interest = round(sum(row["interest"] for row in schedule), 2)
+    total_cost = round(sum(row["payment"] for row in schedule), 2)
+    interest_share = (total_interest / total_cost) if total_cost else 0.0
+    progress = round((principal - balance) / principal * 100) if principal > 0 else 0
+    return {
+        "liability": liability,
+        "payoff": {
+            "schedule": schedule,
+            "monthlyPayment": min_payment,
+            "totalInterest": total_interest,
+            "totalCost": total_cost,
+            "interestShare": round(interest_share, 4),
+            "principalShare": round(1.0 - interest_share, 4),
+            "payoffMonths": plan.payoff_months.get(str(liability["id"])) or len(schedule),
+        },
+        "risk": {
+            "dti": {
+                "existing": round(min_payment / income, 4) if income else None,
+                "cap": loan_offer.DEFAULT_DTI_CAP,
+                "flag": bool(income and min_payment / income > loan_offer.DEFAULT_DTI_CAP),
+            },
+            "relativeCost": {
+                "worstExistingApr": round(apr, 4),
+            },
+        },
+        "cashFlow": context.get("cashFlow"),
+        "totals": context.get("totals"),
+        "subscriptions": context.get("subscriptions"),
+        "remainingBalance": balance,
+        "progressPercent": max(0, min(100, progress)),
+        "liabilityId": liability_id,
     }

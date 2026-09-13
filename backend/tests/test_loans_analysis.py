@@ -51,8 +51,8 @@ class LoansAnalysisTest(unittest.TestCase):
         self.assertEqual(first["minPayment"], 7850.0)
         self.assertEqual(first["capacity"], 0.0)  # seed persona has no surplus
         # Highest-APR credit drives the recommendation.
-        self.assertEqual(first["highCost"][0]["creditor"], "Elektra")
-        self.assertEqual(first["nextBestAction"]["targetCreditor"], "Elektra")
+        self.assertEqual(first["highCost"][0]["creditor"], "Banorte")
+        self.assertEqual(first["nextBestAction"]["targetCreditor"], "Banorte")
         # Quincena is tight because income is quincenal.
         self.assertTrue(first["quincena"]["tight"])
         # Behavior is derived from the user's own subscriptions/transactions.

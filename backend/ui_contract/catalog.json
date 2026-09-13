@@ -17,7 +17,8 @@
     "accept_offer",
     "refresh_bag",
     "adjust_goal",
-    "request_loan"
+    "request_loan",
+    "abonar"
   ],
   "components": {
     "Column": {
@@ -240,6 +241,38 @@
         "cat": "dynamicNumber",
         "schedule": "any",
         "action": "action"
+      }
+    },
+    "LoanSummary": {
+      "required": ["amount", "months", "monthlyPayment"],
+      "props": {
+        "amount": "dynamicNumber",
+        "apr": "dynamicNumber",
+        "months": "dynamicNumber",
+        "monthlyPayment": "dynamicNumber",
+        "totalInterest": "dynamicNumber",
+        "totalCost": "dynamicNumber",
+        "cat": "dynamicNumber",
+        "status": "dynamicString",
+        "progress": "dynamicNumber",
+        "remainingBalance": "dynamicNumber",
+        "purpose": "dynamicString",
+        "tone": "enum:neutral,positive,warning,danger"
+      }
+    },
+    "LiabilitySummary": {
+      "required": ["creditor", "balance"],
+      "props": {
+        "creditor": "dynamicString",
+        "kind": "dynamicString",
+        "principal": "dynamicNumber",
+        "balance": "dynamicNumber",
+        "apr": "dynamicNumber",
+        "minPayment": "dynamicNumber",
+        "dueDay": "dynamicNumber",
+        "progress": "dynamicNumber",
+        "status": "dynamicString",
+        "tone": "enum:neutral,positive,warning,danger"
       }
     }
   }

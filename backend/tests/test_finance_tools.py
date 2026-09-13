@@ -36,7 +36,7 @@ class FinanceToolsTest(unittest.TestCase):
                     self.assertEqual(len(liabilities["liabilities"]), 5)
                     self.assertEqual(liabilities["totalDebt"], 127200.0)
                     self.assertEqual(liabilities["totalMinPayment"], 7850.0)
-                    self.assertEqual(liabilities["liabilities"][0]["creditor"], "BBVA")
+                    self.assertEqual(liabilities["liabilities"][0]["creditor"], "Banorte")
 
                     income = await toolbox.call("get_income_streams", {"user_id": "u_ana"})
                     self.assertEqual(len(income["incomeStreams"]), 1)
@@ -157,9 +157,9 @@ class FinanceToolsTest(unittest.TestCase):
                     result = await toolbox.call("analyze_loans", {"user_id": "u_ana"})
 
                 analysis = result["analysis"]
-                self.assertEqual(analysis["highCost"][0]["creditor"], "Elektra")
+                self.assertEqual(analysis["highCost"][0]["creditor"], "Banorte")
                 self.assertTrue(analysis["scenarios"])
-                self.assertEqual(analysis["nextBestAction"]["targetCreditor"], "Elektra")
+                self.assertEqual(analysis["nextBestAction"]["targetCreditor"], "Banorte")
                 await database.close()
 
             asyncio.run(run())

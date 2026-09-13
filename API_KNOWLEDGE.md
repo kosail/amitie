@@ -454,6 +454,16 @@ The backend stores one template per `(user, loan)` on first access and hydrates 
 happened. `catalog_id` is the deterministic audience choice — render with the
 matching local catalog (`amitie.voz-color.v1` → `voz-color`, else `standard`).
 Private-reason loans perform **no** online research. `404` if the loan is unknown.
+This page is **informational** (the loan is already granted): it never offers or
+accepts it again.
+
+### `GET /api/liabilities/{liability_id}/ui` — personalized per-liability page
+
+Same **JSON** `LoanDetailResponse` shape as above (`entity: "liability"`): a
+read-only, hydrated A2UI page for one active liability (card / debt) with its
+payoff distribution and risk. The surface includes a `Button` with the client-routed
+`abonar` action; tapping it opens the app's payment flow for
+`POST /api/liabilities/{id}/payment`. No TTS and no research. `404` if unknown.
 
 ---
 
@@ -670,6 +680,7 @@ interface PaymentResponse { status: Status; applied_amount: number; liability: R
 | POST | `/api/loans` | `{user_id,amount,months?,loan_request_id?,purpose?,purpose_private?}` | `LoanResponse` / 400 | create + disburse (manual) |
 | GET | `/api/loans?user_id=` | – | `{status,items:[…]}` | one list: loans + liabilities |
 | GET | `/api/loans/{loan_id}/ui` | `?user_id=` | `LoanDetailResponse` / 404 | personalized per-loan page |
+| GET | `/api/liabilities/{liability_id}/ui` | `?user_id=` | `LoanDetailResponse` / 404 | personalized per-liability page |
 | GET | `/api/loans/{loan_request_id}` | – | `LoansConsultResponse` | hydrated terminal |
 | GET | `/healthz` | – | `{status:"ok"}` | – |
 | `*` | `/debug/*` | – | – | **do not use in UI** |

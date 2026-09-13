@@ -11,10 +11,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from mcp_servers.toolbox import Toolbox
 
-from ..dependencies import get_toolbox
+from ..dependencies import get_loan_detail_service, get_toolbox
 from ..schemas import (
     AccountsResponse,
     LiabilitiesResponse,
+    LoanDetailResponse,
     PaymentRequest,
     PaymentResponse,
     ProfileResponse,
@@ -55,6 +56,32 @@ async def get_liabilities(
         liabilities=result.get("liabilities", []),
         total_debt=result.get("totalDebt", 0.0),
         total_min_payment=result.get("totalMinPayment", 0.0),
+    )
+
+
+@router.get("/liabilities/{liability_id}/ui", response_model=LoanDetailResponse)
+async def get_liability_ui(
+    liability_id: str,
+    user_id: str = Query(default="u_ana"),
+    service=Depends(get_loan_detail_service),
+) -> LoanDetailResponse:
+    """Personalized per-liability A2UI page: hydrate the stored template or build it once."""
+    result = await service.get_or_create(user_id=user_id, entity="liability", entity_id=liability_id)
+    if result.get("status") == "not_found":
+        raise HTTPException(status_code=404, detail="unknown liability")
+    if result.get("status") != "ok":
+        raise HTTPException(
+            status_code=400, detail=result.get("message", "no se pudo generar la página de la deuda")
+        )
+    return LoanDetailResponse(
+        status="ok",
+        entity="liability",
+        entity_id=liability_id,
+        source=result.get("source"),
+        catalog_id=result.get("catalog_id"),
+        surface_id=result.get("surface_id"),
+        a2ui=result.get("a2ui", []),
+        audio_ref=result.get("audio_ref"),
     )
 
 

@@ -46,7 +46,9 @@
         { "$ref": "#/components/BarChart" },
         { "$ref": "#/components/ForecastChart" },
         { "$ref": "#/components/ScenarioComparison" },
-        { "$ref": "#/components/LoanOffer" }
+        { "$ref": "#/components/LoanOffer" },
+        { "$ref": "#/components/LoanSummary" },
+        { "$ref": "#/components/LiabilitySummary" }
       ]
     }
   },
@@ -610,6 +612,58 @@
             "action": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/Action" }
           },
           "required": ["component", "amount", "apr", "months", "monthlyPayment", "totalInterest", "cat"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "LoanSummary": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "LoanSummary" },
+            "amount": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "apr": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "months": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "monthlyPayment": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "totalInterest": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "totalCost": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "cat": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "status": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString" },
+            "progress": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "remainingBalance": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "purpose": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString" },
+            "tone": { "type": "string", "enum": ["neutral", "positive", "warning", "danger"] }
+          },
+          "required": ["component", "amount", "months", "monthlyPayment"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "LiabilitySummary": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon" },
+        { "$ref": "#/$defs/CatalogComponentCommon" },
+        {
+          "type": "object",
+          "properties": {
+            "component": { "const": "LiabilitySummary" },
+            "creditor": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString" },
+            "kind": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString" },
+            "principal": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "balance": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "apr": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "minPayment": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "dueDay": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "progress": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber" },
+            "status": { "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString" },
+            "tone": { "type": "string", "enum": ["neutral", "positive", "warning", "danger"] }
+          },
+          "required": ["component", "creditor", "balance"]
         }
       ],
       "unevaluatedProperties": false

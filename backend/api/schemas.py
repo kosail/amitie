@@ -266,7 +266,8 @@ class LoansListResponse(BaseModel):
 
 class LoanDetailResponse(BaseModel):
     status: str
-    loan_id: str
+    entity: str | None = None
+    entity_id: str | None = None
     source: str | None = None
     catalog_id: str | None = None
     surface_id: str | None = None

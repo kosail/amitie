@@ -14,7 +14,8 @@
     "accept_offer",
     "refresh_bag",
     "adjust_goal",
-    "request_loan"
+    "request_loan",
+    "abonar"
   ],
   "components": {}
 }

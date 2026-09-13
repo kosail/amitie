@@ -159,7 +159,7 @@ def _new_persona_transactions() -> list[tuple]:
         "a_carmen_nom",
         rng_seed=22,
         months=range(4, 10),
-        deposits=[(30, 11000.0, "Sueldo HSBC")],
+        deposits=[(30, 11000.0, "Sueldo Banorte")],
         fixed=[(3, 3500.0, "renta", "Renta")],
         variable=[
             ("despensa", 3, 400.0, 700.0, ["Soriana", "Chedraui", "Mercado"]),
@@ -284,13 +284,13 @@ def build_seed_statements() -> list[tuple[str, tuple]]:
         "accounts",
         ("id", "user_id", "kind", "institution", "balance", "currency"),
         [
-            ("a_ana_nom", "u_ana", "checking", "BBVA", 8500.0, "MXN"),
-            ("a_ana_ahorro", "u_ana", "savings", "BBVA", 3000.0, "MXN"),
+            ("a_ana_nom", "u_ana", "checking", "Banorte", 8500.0, "MXN"),
+            ("a_ana_ahorro", "u_ana", "savings", "Banorte", 3000.0, "MXN"),
             ("a_don_nom", "u_don", "checking", "Banorte", 2100.0, "MXN"),
-            ("a_sofia_nom", "u_sofia", "checking", "Nubank", 6500.0, "MXN"),
-            ("a_carmen_nom", "u_carmen", "checking", "HSBC", 1800.0, "MXN"),
-            ("a_roberto_nom", "u_roberto", "checking", "BBVA", 85000.0, "MXN"),
-            ("a_roberto_inv", "u_roberto", "savings", "BBVA", 250000.0, "MXN"),
+            ("a_sofia_nom", "u_sofia", "checking", "Banorte", 6500.0, "MXN"),
+            ("a_carmen_nom", "u_carmen", "checking", "Banorte", 1800.0, "MXN"),
+            ("a_roberto_nom", "u_roberto", "checking", "Banorte", 85000.0, "MXN"),
+            ("a_roberto_inv", "u_roberto", "savings", "Banorte", 250000.0, "MXN"),
         ],
     )
 
@@ -326,15 +326,15 @@ def build_seed_statements() -> list[tuple[str, tuple]]:
         "liabilities",
         ("id", "user_id", "creditor", "kind", "principal", "balance", "apr", "min_payment", "due_day", "nomina_discount", "status"),
         [
-            ("l_bbva_tdc", "u_ana", "BBVA", "credit_card", 60000.0, 48000.0, 0.54, 2900.0, 5, 0.0, "active"),
+            ("l_bbva_tdc", "u_ana", "Banorte", "credit_card", 60000.0, 48000.0, 0.54, 2900.0, 5, 0.0, "active"),
             ("l_banorte_tdc", "u_ana", "Banorte", "credit_card", 26000.0, 22000.0, 0.48, 1350.0, 12, 0.0, "active"),
-            ("l_nomina", "u_ana", "BBVA", "payroll_loan", 40000.0, 35000.0, 0.28, 1800.0, 15, 1800.0, "active"),
-            ("l_personal", "u_ana", "Kueski", "personal_loan", 18000.0, 15000.0, 0.35, 1100.0, 20, 0.0, "active"),
-            ("l_electronica", "u_ana", "Elektra", "store_credit", 9000.0, 7200.0, 0.62, 700.0, 8, 0.0, "active"),
-            ("l_sofia_tdc", "u_sofia", "Nubank", "credit_card", 12000.0, 9500.0, 0.44, 650.0, 10, 0.0, "active"),
-            ("l_carmen_tdc", "u_carmen", "HSBC", "credit_card", 20000.0, 16500.0, 0.52, 1100.0, 7, 0.0, "active"),
-            ("l_carmen_elektra", "u_carmen", "Elektra", "store_credit", 6000.0, 4200.0, 0.60, 420.0, 15, 0.0, "active"),
-            ("l_roberto_auto", "u_roberto", "BBVA", "auto_loan", 240000.0, 128000.0, 0.16, 5200.0, 20, 0.0, "active"),
+            ("l_nomina", "u_ana", "Banorte", "payroll_loan", 40000.0, 35000.0, 0.28, 1800.0, 15, 1800.0, "active"),
+            ("l_personal", "u_ana", "Banorte", "personal_loan", 18000.0, 15000.0, 0.35, 1100.0, 20, 0.0, "active"),
+            ("l_electronica", "u_ana", "Banorte", "store_credit", 9000.0, 7200.0, 0.62, 700.0, 8, 0.0, "active"),
+            ("l_sofia_tdc", "u_sofia", "Banorte", "credit_card", 12000.0, 9500.0, 0.44, 650.0, 10, 0.0, "active"),
+            ("l_carmen_tdc", "u_carmen", "Banorte", "credit_card", 20000.0, 16500.0, 0.52, 1100.0, 7, 0.0, "active"),
+            ("l_carmen_elektra", "u_carmen", "Banorte", "store_credit", 6000.0, 4200.0, 0.60, 420.0, 15, 0.0, "active"),
+            ("l_roberto_auto", "u_roberto", "Banorte", "auto_loan", 240000.0, 128000.0, 0.16, 5200.0, 20, 0.0, "active"),
         ],
     )
 

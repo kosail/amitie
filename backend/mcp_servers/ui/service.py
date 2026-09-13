@@ -100,6 +100,10 @@ async def _render(
         scoped = await finance_service.loan_context(database, user_id, row["entity_id"])
         if scoped:
             context.update(scoped)
+    if domain == "liability_detail" and row.get("entity_id"):
+        scoped = await finance_service.liability_context(database, user_id, row["entity_id"])
+        if scoped:
+            context.update(scoped)
 
     audio_ref = ""
     if descriptor.get("accessible"):
@@ -143,10 +147,12 @@ async def persist_ui(
     # basic education), so those users always get the emoji/color interface.
     simple_audience = isinstance(audience, dict) and audience.get("level") == "simple"
     accessible = profile is not None or simple_audience
+    # Per-loan/liability detail pages are read-only information: never speak them.
+    detail_domain = domain in ("loan_detail", "liability_detail")
     # INV-003: accessible mode is automatic, never a caller choice.
     pinned_catalog = VOZ_COLOR_ID if accessible else CATALOG_ID
     spoken = (speech or "").strip()
-    if accessible and not spoken:
+    if accessible and not spoken and not detail_domain:
         spoken = speech_text(components)
 
     validation = validate_messages(
@@ -165,7 +171,7 @@ async def persist_ui(
         domain,
         entity_id,
         simulation,
-        accessible=accessible,
+        accessible=accessible and not detail_domain,
         speech=spoken,
         voice_id=(profile or {}).get("voice_id", ""),
         speed=(profile or {}).get("speed", 1.0),
