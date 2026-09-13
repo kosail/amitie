@@ -569,3 +569,13 @@
 - rationale: The requirement is a hard ≤5 s consult. LLM latency is variable and the retry loop doubled it; validation must accept the shapes the prompt actually produces. Normalizing first keeps the agent generating the UI while guaranteeing schema validity, and the deterministic fallback guarantees the SLA (and never leaves the user with a silent error).
 - impact: Suite now 199 tests, all passing (added `test_normalize.py`; loans tests now cover normalization, missing-LoanOffer fallback, and a forced LLM timeout returning a fallback terminal). `demo`/`u_ana` is intentionally not eligible (documented); offer demos use `roberto`/`sofia`/`carmen`. No invariant changed; HTTP/REST contract intact.
 - follow_ups: Mobile side implemented in `hackmtyfront` (see its OpenSpec change `harden-loans-consult-sync`); live re-verification with the real DeepSeek key pending.
+
+## [2026-09-13] change — POST /api/agent/greeting (deterministic spoken greeting for the Asistente tab)
+- agent: opencode / deepseek-flash
+- requirements: REQ-API-12
+- invariants: INV-014 (MCP-only data/voice), INV-015 (no LLM in the greeting path)
+- files: `backend/agent/service.py`, `backend/api/routers/agent.py` (new), `backend/api/schemas.py`, `backend/api/app.py`, `backend/tests/test_agent_greeting.py` (new), `SPECS.md`, `API_KNOWLEDGE.md`
+- decision: Added `POST /api/agent/greeting` taking `{session_id}`, validating the session, and returning an `AgentResponse` with a personalized, deterministic `assistant_text` (no LLM) plus `audio_ref` for accessible users only. `AgentService.greeting` reads the profile through the finance MCP (`get_profile`) for name + `accessibilityMode`, and calls `synthesize_speech` only when the mode is non-null, mirroring the voz-color autoplay contrast. Standard users get text with `audio_ref: null`.
+- rationale: The Asistente tab had no way to speak first — the only initial turn logic required an `intent` param, so a plain tab open produced no `/api/message` and no greeting audio. A dedicated deterministic endpoint (parallel to `/api/loans/greeting`) is faster and more reliable than abusing the agent with a synthetic message, and keeps audio generation behind the voice MCP.
+- impact: Suite extended with `test_agent_greeting.py` (accessible → `audio_ref`; standard → none; unknown session → 404). The frontend calls it on the Asistente tab open (see the frontend repo's `add-assistant-initial-greeting` change).
+- follow_ups: Frontend wiring + auto-play; live verification with the real Piper/ElevenLabs chain.

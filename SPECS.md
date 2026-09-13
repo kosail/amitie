@@ -72,6 +72,7 @@
 - [~] **REQ-API-05** Saving bags: **PENDING TO BE RELEASED** (endpoints staged but not wired; see §3).
 - [x] **REQ-API-06** `POST /api/negotiation/{session}/turn`, `POST /api/negotiation/{session}/take-control`
 - [x] **REQ-API-07** `GET /api/audio/{asset_id}`
+- [x] **REQ-API-12** `POST /api/agent/greeting` — `{session_id}` → deterministic, personalized spoken greeting (no LLM): `{status, assistant_text, audio_ref?, a2ui: [], surface_id: null}`. Audio is synthesized only for accessible users (non-null accessibility mode); standard users get text only. 404 on unknown session. Used by the Asistente tab to greet on open.
 - [x] **REQ-API-08** `GET /debug/kill-test/{surface_id}`, `GET /debug/trace/{trace_id}`
 
 - [x] **REQ-API-08b** Loans: `POST /api/loans/greeting` (personalized intro audio + session) and `POST /api/loans/consult` (`{session_id, text|audio_b64, loan_request_id?}`) both return **`multipart/form-data`** (`payload` JSON part + `audio` mp3 part; `{response_text, confidence, terminal_response}`); `GET /api/loans/{loan_request_id}` returns the hydrated terminal UI as JSON. See `LOANS_CONSULT_GUIDE.md`.

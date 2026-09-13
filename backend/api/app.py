@@ -45,6 +45,7 @@ from providers.voice import STTProvider, TTSProvider
 
 from .routers import (
     action,
+    agent,
     audio,
     auth,
     finance,
@@ -172,6 +173,7 @@ def create_app(
     app.include_router(session.router)
     app.include_router(auth.router)
     app.include_router(message.router)
+    app.include_router(agent.router)
     app.include_router(action.router)
     app.include_router(negotiation.router)
     app.include_router(finance.router)
