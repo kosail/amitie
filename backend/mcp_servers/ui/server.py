@@ -48,6 +48,13 @@ def build_ui_server(database: DatabasePort) -> MCPServer:
         return await service.hydrate_ui(database, surface_id)
 
     @server.tool()
+    async def find_surface(user_id: str, domain: str, entity_id: str) -> dict[str, Any]:
+        """Find the latest persisted surface for a (user, domain, entity) key, if any."""
+        return await service.find_surface(
+            database, user_id=user_id, domain=domain, entity_id=entity_id
+        )
+
+    @server.tool()
     async def kill_test(surface_id: str) -> dict[str, Any]:
         """Serve the stored frozen artifact for the Kill Test: no agent, no recompute."""
         return await service.kill_test(database, surface_id)

@@ -231,6 +231,28 @@ def _wants_max(text: str) -> bool:
     return _matches_any(text, _MAX_INTENT)
 
 
+# "It's private" / "prefer not to say" — we stop asking and never research it.
+_PRIVATE_INTENT = (
+    "es privado",
+    "es personal",
+    "prefiero no decir",
+    "prefiero no decirlo",
+    "no quiero decir",
+    "no quiero decirlo",
+    "sin decir",
+    "no te lo puedo decir",
+    "no lo quiero compartir",
+    "es confidencial",
+    "privado",
+    "razón privada",
+    "razon privada",
+)
+
+
+def _wants_private(text: str) -> bool:
+    return _matches_any(text, _PRIVATE_INTENT)
+
+
 def _extract_purpose(text: str) -> str | None:
     """Best-effort purpose from "para ..." phrasing; the answer stays conversational."""
     if not text:
@@ -437,9 +459,10 @@ class LoansConsultService:
                     "",
                     "ESTÁS EN CONVERSACIÓN, AÚN SIN OFERTA: al usuario todavía le falta dar el monto "
                     "y/o el propósito. Responde de forma natural y breve (una o dos frases): reconoce lo "
-                    "que ya dijo, no repitas la bienvenida, y pregunta con calidez solo lo que falte. NO "
-                    "generes una oferta, NO calcules cifras y devuelve terminal_response = null. El "
-                    "monto mínimo del producto es 5,000 MXN.",
+                    "que ya dijo, no repitas la bienvenida, y pregunta con calidez solo lo que falte. Si "
+                    "preguntas el propósito, indícale que puede responder \"es privado\" y no volverás a "
+                    "preguntar. NO generes una oferta, NO calcules cifras y devuelve terminal_response = "
+                    "null. El monto mínimo del producto es 5,000 MXN.",
                     "",
                     "Responde ÚNICAMENTE con un objeto JSON: "
                     '{"response_text": "texto para hablar", "confidence": 0.0, "terminal_response": null}',
@@ -591,7 +614,8 @@ class LoansConsultService:
                                 + json.dumps(_recent_history(history), ensure_ascii=False)
                                 + f"\n\nMensaje del usuario: {text}"
                                 + ("\n\nFalta el MONTO (pídelo)." if need_amount else "")
-                                + ("\nFalta el PROPÓSITO (pídelo)." if need_purpose else "")
+                                + ("\nFalta el PROPÓSITO (pídelo; si prefiere, puede responder "
+                                   "\"es privado\" y no volverás a preguntar)." if need_purpose else "")
                                 + "\nPregunta con naturalidad lo que falte y devuelve terminal_response = null."
                             ),
                         ),
@@ -633,6 +657,7 @@ class LoansConsultService:
         purpose = state.get("purpose") or None
         use_max = bool(state.get("use_max"))
         purpose_asked = bool(state.get("purpose_asked"))
+        purpose_private = bool(state.get("purpose_private"))
 
         new_term = _extract_term(text)
         if new_term:
@@ -652,12 +677,16 @@ class LoansConsultService:
         purpose_in_text = _extract_purpose(text)
         if purpose_in_text:
             purpose = purpose_in_text
+        if _wants_private(text):
+            purpose = "privado"
+            purpose_private = True
 
         has_amount = requested_amount is not None or use_max
         state.update(
             {
                 "requested_amount": requested_amount,
                 "purpose": purpose,
+                "purpose_private": purpose_private,
                 "use_max": use_max,
                 "requested_term": requested_term,
                 "term_confirmed": confirmed,
@@ -705,7 +734,7 @@ class LoansConsultService:
                 "state": state,
             }
 
-        need_purpose = purpose is None and not purpose_asked
+        need_purpose = purpose is None and not purpose_asked and not purpose_private
 
         # Intake: without an amount (and no explicit maximum) we cannot offer yet.
         if not has_amount:
@@ -728,7 +757,9 @@ class LoansConsultService:
             propose = offer.get("offer", offer) if isinstance(offer, Mapping) else {}
             response_text = _confirmation_text(propose, requested_term, name or None)
             if need_purpose:
-                response_text += " ¿Y para qué usarías el crédito?"
+                response_text += (
+                    " ¿Y para qué usarías el crédito? Si lo prefieres, puedes decirme que es privado."
+                )
                 state["purpose_asked"] = True
             audio = await self._synthesize(response_text, user_id)
             await self._trace(started, error=None)

@@ -6,22 +6,85 @@ import json
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from agent.loans import LoansConsultService
 from db.port import DatabasePort
 from mcp_servers.toolbox import Toolbox
 
-from ..dependencies import get_database, get_loans_service, get_toolbox, now_iso
+from ..dependencies import (
+    get_database,
+    get_loan_detail_service,
+    get_loans_service,
+    get_toolbox,
+    now_iso,
+)
 from ..schemas import (
+    LoanDetailResponse,
     LoanResponse,
     LoansConsultRequest,
     LoansConsultResponse,
     LoansCreateRequest,
     LoansGreetingRequest,
+    LoansListResponse,
 )
 
 router = APIRouter(prefix="/api/loans", tags=["loans"])
+
+_CREDITOR_KIND_LABEL = {
+    "credit_card": "Tarjeta de crédito",
+    "payroll_loan": "Préstamo de nómina",
+    "personal_loan": "Préstamo personal",
+    "store_credit": "Crédito departamental",
+}
+
+
+async def _list_items(database: DatabasePort, toolbox: Toolbox, user_id: str) -> list[dict]:
+    """One list for the Préstamos tab: created loans first, then active liabilities."""
+    loans_result = await toolbox.call("list_loans", {"user_id": user_id})
+    liabilities_result = await toolbox.call("get_liabilities", {"user_id": user_id})
+    items: list[dict] = []
+    for loan in loans_result.get("loans", []):
+        items.append(
+            {
+                "source": "loan",
+                "id": loan["id"],
+                "name": "Crédito personal",
+                "status": loan.get("status", "active"),
+                "balance": loan.get("amount"),
+                "monthlyPayment": loan.get("monthlyPayment"),
+                "progressPercent": 0,
+                "termMonths": loan.get("termMonths"),
+                "purpose": loan.get("purpose"),
+                "purposePrivate": bool(loan.get("purposePrivate")),
+                "dueDay": None,
+                "createdAt": loan.get("createdAt"),
+            }
+        )
+    for liability in liabilities_result.get("liabilities", []):
+        if liability.get("status") != "active":
+            continue
+        principal = float(liability.get("principal") or 0.0)
+        balance = float(liability.get("balance") or 0.0)
+        progress = round((principal - balance) / principal * 100) if principal > 0 else 0
+        items.append(
+            {
+                "source": "liability",
+                "id": liability["id"],
+                "name": f"{liability.get('creditor')} · "
+                f"{_CREDITOR_KIND_LABEL.get(liability.get('kind'), liability.get('kind'))}",
+                "status": "active",
+                "balance": liability.get("balance"),
+                "monthlyPayment": liability.get("minPayment"),
+                "progressPercent": max(0, min(100, progress)),
+                "termMonths": None,
+                "purpose": None,
+                "purposePrivate": False,
+                "dueDay": liability.get("dueDay"),
+                "createdAt": None,
+            }
+        )
+    return items
 
 
 async def _audio_bytes(toolbox: Toolbox, audio_id: str | None) -> bytes | None:
@@ -95,6 +158,7 @@ async def _append_turns(
 _STATE_KEYS = (
     "requested_amount",
     "purpose",
+    "purpose_private",
     "use_max",
     "requested_term",
     "term_confirmed",
@@ -219,12 +283,30 @@ async def consult(
     return _multipart(dict(result), audio)
 
 
+@router.get("", response_model=LoansListResponse)
+async def list_loans(
+    user_id: str = Query(default="u_ana"),
+    database: DatabasePort = Depends(get_database),
+    toolbox: Toolbox = Depends(get_toolbox),
+) -> LoansListResponse:
+    """All of the user's credits in one list: created loans + active liabilities."""
+    return LoansListResponse(items=await _list_items(database, toolbox, user_id))
+
+
 @router.post("", response_model=LoanResponse)
 async def create_loan(
     payload: LoansCreateRequest,
+    database: DatabasePort = Depends(get_database),
     toolbox: Toolbox = Depends(get_toolbox),
 ) -> LoanResponse:
     """Create the offered loan and disburse it. Called only when the user accepts."""
+    purpose = payload.purpose
+    purpose_private = bool(payload.purpose_private)
+    if payload.loan_request_id:
+        state = await _load_state(database, payload.loan_request_id)
+        if not purpose and state.get("purpose"):
+            purpose = str(state["purpose"])
+        purpose_private = purpose_private or bool(state.get("purpose_private"))
     result = await toolbox.call(
         "create_loan",
         {
@@ -232,6 +314,8 @@ async def create_loan(
             "amount": payload.amount,
             "term_months": payload.months,
             "loan_request_id": payload.loan_request_id or "",
+            "purpose": purpose or "",
+            "purpose_private": purpose_private,
         },
     )
     if result.get("status") != "ok":
@@ -240,6 +324,31 @@ async def create_loan(
             detail="; ".join(result.get("issues", ["no se pudo crear el crédito"])),
         )
     return LoanResponse(status="ok", loan=result.get("loan"))
+
+
+@router.get("/{loan_id}/ui", response_model=LoanDetailResponse)
+async def get_loan_ui(
+    loan_id: str,
+    user_id: str = Query(default="u_ana"),
+    service=Depends(get_loan_detail_service),
+) -> LoanDetailResponse:
+    """Personalized per-loan A2UI page: hydrate the stored template or build it once."""
+    result = await service.get_or_create(user_id=user_id, loan_id=loan_id)
+    if result.get("status") == "not_found":
+        raise HTTPException(status_code=404, detail="unknown loan")
+    if result.get("status") != "ok":
+        raise HTTPException(
+            status_code=400, detail=result.get("message", "no se pudo generar la página del crédito")
+        )
+    return LoanDetailResponse(
+        status="ok",
+        loan_id=loan_id,
+        source=result.get("source"),
+        catalog_id=result.get("catalog_id"),
+        surface_id=result.get("surface_id"),
+        a2ui=result.get("a2ui", []),
+        audio_ref=result.get("audio_ref"),
+    )
 
 
 @router.get("/{loan_request_id}", response_model=LoansConsultResponse)

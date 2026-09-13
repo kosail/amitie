@@ -16,6 +16,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from agent.negotiation import NegotiationService
+from agent.loan_detail import LoanDetailService
 from agent.loans import LoansConsultService
 from agent.service import AgentService
 from config import Settings, load_dotenv
@@ -136,6 +137,14 @@ def create_app(
         app.state.agent_service = agent_service
         app.state.negotiation_service = negotiation_service
         app.state.loans_service = loans_service
+        app.state.loan_detail_service = LoanDetailService(
+            provider=llm,
+            toolbox=toolbox,
+            research=research_provider,
+            tracer=tracer,
+            deadline_seconds=resolved.loans_llm_deadline_seconds,
+            max_tokens=resolved.loans_max_tokens,
+        )
         try:
             yield
         finally:

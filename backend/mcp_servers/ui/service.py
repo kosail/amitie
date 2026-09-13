@@ -94,6 +94,12 @@ async def _render(
         context = {**snapshot, **context}
     if isinstance(descriptor.get("audience"), dict):
         context["audience"] = descriptor["audience"]
+    # Loan-scoped surfaces resolve `{{loan.*}}` / `/loan/*` from the live loan
+    # (fresh schedule), never from the snapshot frozen at generation time.
+    if domain == "loan_detail" and row.get("entity_id"):
+        scoped = await finance_service.loan_context(database, user_id, row["entity_id"])
+        if scoped:
+            context.update(scoped)
 
     audio_ref = ""
     if descriptor.get("accessible"):
@@ -131,8 +137,12 @@ async def persist_ui(
     speech: str = "",
 ) -> dict[str, Any]:
     profile = await _accessibility_profile(database, user_id)
-    accessible = profile is not None
     audience = await finance_service.get_audience(database, user_id)
+    # The accessible (color/emoji, TTS-first) catalog is automatic: an explicit
+    # accessibility profile OR a `simple` audience (elderly / low-literacy /
+    # basic education), so those users always get the emoji/color interface.
+    simple_audience = isinstance(audience, dict) and audience.get("level") == "simple"
+    accessible = profile is not None or simple_audience
     # INV-003: accessible mode is automatic, never a caller choice.
     pinned_catalog = VOZ_COLOR_ID if accessible else CATALOG_ID
     spoken = (speech or "").strip()
@@ -227,6 +237,22 @@ async def persist_ui(
             },
         ],
     }
+
+
+async def find_surface(
+    database: DatabasePort, *, user_id: str, domain: str, entity_id: str
+) -> dict[str, Any]:
+    """Locate the latest persisted surface for a (user, domain, entity) key.
+
+    Used by lazy per-entity surfaces (e.g. `loan_detail`) to reuse a stored
+    template instead of regenerating it.
+    """
+    row = await database.fetch_one(
+        "SELECT id FROM generated_ui WHERE user_id = ? AND domain = ? AND entity_id = ? "
+        "ORDER BY updated_at DESC, rowid DESC LIMIT 1",
+        (user_id, domain, entity_id),
+    )
+    return {"status": "ok", "surface_id": row["id"] if row is not None else None}
 
 
 async def hydrate_ui(database: DatabasePort, surface_id: str) -> dict[str, Any]:

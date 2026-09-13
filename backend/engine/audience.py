@@ -30,8 +30,9 @@ _LEVEL_MAX_SECTIONS = {"simple": 2, "standard": 4, "detailed": 6}
 _DIRECTIVES = {
     "simple": (
         "AUDIENCIA: comprensión BÁSICA (edad avanzada, baja alfabetización o educación básica). "
-        "Usa frases cortas y lenguaje llano; UNA idea por sección; sin tecnicismos (explica la tasa y "
-        "el CAT en palabras simples); números grandes; sin tablas densas; máximo 2 secciones. "
+        "Interfaz COLORIDA y con EMOJI: una idea por tarjeta, cada texto con un emoji guía, "
+        "frases cortas y lenguaje llano; números grandes; sin tecnicismos (explica la tasa y "
+        "el CAT en palabras simples); sin tablas densas; máximo 2 secciones. "
         "SIEMPRE incluye LoanOffer con el monto y el pago mensual."
     ),
     "standard": (
@@ -70,6 +71,14 @@ def _sophistication(
     return "medium"
 
 
+_SOPHISTICATION_SCORE = {
+    "low": 0.15,
+    "medium": 0.5,
+    "high": 0.9,
+}
+_COMPREHENSION_SCORE = {"basic": 0.2, "intermediate": 0.5, "advanced": 0.9}
+
+
 def classify(
     profile: Mapping[str, Any],
     *,
@@ -98,6 +107,13 @@ def classify(
         "level": level,
         "comprehension": comprehension,
         "financialSophistication": sophistication,
+        # Numeric 0..1 blend of comprehension and real financial activity, so the
+        # interface density can scale smoothly rather than in 3 coarse buckets.
+        "activityScore": round(
+            0.5 * _COMPREHENSION_SCORE.get(comprehension, 0.5)
+            + 0.5 * _SOPHISTICATION_SCORE.get(sophistication, 0.5),
+            3,
+        ),
         "explainTerms": level == "simple",
         "showAdvancedMetrics": level == "detailed",
         "showCharts": level != "simple",

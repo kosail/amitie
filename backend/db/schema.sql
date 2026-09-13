@@ -171,6 +171,8 @@ CREATE TABLE IF NOT EXISTS loans (
     total_interest REAL NOT NULL DEFAULT 0,
     total_cost REAL NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'active',
+    purpose TEXT,
+    purpose_private INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
 

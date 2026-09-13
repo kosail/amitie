@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from fastapi import Request
 
 from agent.negotiation import NegotiationService
+from agent.loan_detail import LoanDetailService
 from agent.loans import LoansConsultService
 from agent.service import AgentService
 from db.port import DatabasePort
@@ -47,6 +48,10 @@ def get_negotiation_service(request: Request) -> NegotiationService:
 
 def get_loans_service(request: Request) -> LoansConsultService:
     return request.app.state.loans_service
+
+
+def get_loan_detail_service(request: Request) -> LoanDetailService:
+    return request.app.state.loan_detail_service
 
 
 def get_llm(request: Request) -> LLMProvider:

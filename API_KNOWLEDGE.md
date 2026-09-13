@@ -417,17 +417,43 @@ credit** created only on acceptance.
 
 Request:
 ```json
-{ "user_id":"u_don", "amount":47500, "months":0, "loan_request_id":"loan_…" }
+{ "user_id":"u_don", "amount":47500, "months":0, "loan_request_id":"loan_…",
+  "purpose":"estudiar", "purpose_private":false }
 ```
 `amount` must not exceed the offered amount; `months`/APR default to the bank
-product. Response (`LoanResponse`):
+product. When `purpose`/`purpose_private` are omitted and `loan_request_id` is
+given, the backend reads them from the loan-request conversation state. Response
+(`LoanResponse`):
 ```json
 { "status":"ok", "loan": { "id":"loan_…", "amount":47500, "apr":0.24, "termMonths":24,
-  "monthlyPayment":2520.1, "totalInterest":…, "cat":…, "schedule":[…] } }
+  "monthlyPayment":2520.1, "totalInterest":…, "cat":…, "purpose":"estudiar",
+  "schedule":[…] } }
 ```
 `400` if invalid or above the offer. The backend inserts the loan **and disburses**
 it (credits the checking account + records a `loan_disbursement` transaction)
 atomically. **Never call this until the user confirms.**
+
+### `GET /api/loans?user_id=` — one list of credits
+
+Returns **JSON** `{ "status":"ok", "items":[ … ] }`: the user's created loans first,
+then their active liabilities. Each item carries `source` (`"loan" | "liability"`),
+`id`, `name`, `status`, `balance`, `monthlyPayment`, `progressPercent`,
+`termMonths`, `purpose`, `purposePrivate`, `dueDay`, `createdAt`. Render rows whose
+`source` is `"loan"` as tappable into the per-loan page below.
+
+### `GET /api/loans/{loan_id}/ui` — personalized per-loan page
+
+Returns **JSON** `LoanDetailResponse` with a hydrated A2UI page for **this** loan:
+```json
+{ "status":"ok", "loan_id":"loan_…", "source":"stored|generated",
+  "catalog_id":"amitie.standard.v1|amitie.voz-color.v1", "surface_id":"surf_…",
+  "a2ui":[ … ], "audio_ref": null }
+```
+The backend stores one template per `(user, loan)` on first access and hydrates it
+(fresh loan values, resolved placeholders) on later accesses; `source` says which
+happened. `catalog_id` is the deterministic audience choice — render with the
+matching local catalog (`amitie.voz-color.v1` → `voz-color`, else `standard`).
+Private-reason loans perform **no** online research. `404` if the loan is unknown.
 
 ---
 
@@ -641,7 +667,9 @@ interface PaymentResponse { status: Status; applied_amount: number; liability: R
 | GET | `/api/audio/{asset_id}` | – | `audio/mpeg` | play speech |
 | POST | `/api/loans/greeting` | `{user_id}` | **multipart** payload+audio | loans |
 | POST | `/api/loans/consult` | `{session_id,text?\|audio_b64?,language?,loan_request_id?}` | **multipart** payload+audio | loans |
-| POST | `/api/loans` | `{user_id,amount,months?,loan_request_id?}` | `LoanResponse` / 400 | create + disburse (manual) |
+| POST | `/api/loans` | `{user_id,amount,months?,loan_request_id?,purpose?,purpose_private?}` | `LoanResponse` / 400 | create + disburse (manual) |
+| GET | `/api/loans?user_id=` | – | `{status,items:[…]}` | one list: loans + liabilities |
+| GET | `/api/loans/{loan_id}/ui` | `?user_id=` | `LoanDetailResponse` / 404 | personalized per-loan page |
 | GET | `/api/loans/{loan_request_id}` | – | `LoansConsultResponse` | hydrated terminal |
 | GET | `/healthz` | – | `{status:"ok"}` | – |
 | `*` | `/debug/*` | – | – | **do not use in UI** |

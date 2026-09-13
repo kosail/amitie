@@ -55,3 +55,11 @@ async def _ensure_columns(database: DatabasePort) -> None:
     }
     if "memo" not in transaction_columns:
         await database.execute("ALTER TABLE transactions ADD COLUMN memo TEXT")
+
+    loan_columns = {row["name"] for row in await database.fetch_all("PRAGMA table_info(loans)")}
+    if "purpose" not in loan_columns:
+        await database.execute("ALTER TABLE loans ADD COLUMN purpose TEXT")
+    if "purpose_private" not in loan_columns:
+        await database.execute(
+            "ALTER TABLE loans ADD COLUMN purpose_private INTEGER NOT NULL DEFAULT 0"
+        )

@@ -230,8 +230,12 @@ def build_finance_server(database: DatabasePort, settings: Any | None = None) ->
         amount: float,
         term_months: int = 0,
         loan_request_id: str = "",
+        purpose: str = "",
+        purpose_private: bool = False,
     ) -> dict[str, Any]:
-        """Create the loan + disburse it (called only when the user accepts)."""
+        """Create the loan + disburse it (called only when the user accepts). `purpose`
+        records why the user wants the credit; set `purpose_private` when they chose not
+        to share it (the interface is still personalized, but no online research runs)."""
         return await service.create_loan(
             database,
             user_id,
@@ -239,6 +243,18 @@ def build_finance_server(database: DatabasePort, settings: Any | None = None) ->
             apr=settings.loan_default_apr,
             term_months=term_months,
             loan_request_id=loan_request_id or None,
+            purpose=purpose or None,
+            purpose_private=purpose_private,
         )
+
+    @server.tool()
+    async def list_loans(user_id: str) -> dict[str, Any]:
+        """Return the user's created loans, newest first (with purpose and terms)."""
+        return {"loans": await service.list_loans(database, user_id)}
+
+    @server.tool()
+    async def get_loan(user_id: str, loan_id: str) -> dict[str, Any]:
+        """Return one created loan with its stored purpose and terms."""
+        return {"loan": await service.get_loan(database, user_id, loan_id)}
 
     return server

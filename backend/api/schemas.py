@@ -249,12 +249,30 @@ class LoansCreateRequest(BaseModel):
     amount: float
     months: int = 0
     loan_request_id: str | None = None
+    purpose: str | None = None
+    purpose_private: bool = False
 
 
 class LoanResponse(BaseModel):
     status: str
     loan: dict[str, Any] | None = None
     issues: list[str] = Field(default_factory=list)
+
+
+class LoansListResponse(BaseModel):
+    status: str = "ok"
+    items: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class LoanDetailResponse(BaseModel):
+    status: str
+    loan_id: str
+    source: str | None = None
+    catalog_id: str | None = None
+    surface_id: str | None = None
+    a2ui: list[dict[str, Any]] = Field(default_factory=list)
+    audio_ref: str | None = None
+    message: str | None = None
 
 
 class SavingBagCreateRequest(BaseModel):

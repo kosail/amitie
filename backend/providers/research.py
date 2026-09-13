@@ -73,6 +73,10 @@ class ResearchProvider(Protocol):
 
     async def research(self, query: str, hints: dict[str, Any] | None = None) -> ResearchSnapshot: ...
 
+    async def research_topic(
+        self, query: str, hints: dict[str, Any] | None = None
+    ) -> "TopicResearch": ...
+
 
 def _coerce(payload: dict[str, Any]) -> dict[str, float]:
     costs: dict[str, float] = {}
@@ -98,6 +102,12 @@ class StaticPriceTableResearch:
                 table = candidate
                 break
         return ResearchSnapshot(source=self.name, payload=dict(table))
+
+    async def research_topic(
+        self, query: str, hints: dict[str, Any] | None = None
+    ) -> "TopicResearch":
+        """Deterministic topical cost breakdown (no network, no LLM)."""
+        return _static_topic(self.name, query, hints)
 
 
 class GeminiGroundingResearch:
@@ -167,6 +177,55 @@ class GeminiGroundingResearch:
             raise ProviderResponseError("grounding output was not an object")
         return ResearchSnapshot(source=self.name, payload=_coerce(parsed))
 
+    @staticmethod
+    def _topic_prompt(query: str, hints: dict[str, Any] | None) -> str:
+        return (
+            "Eres un asistente de investigación financiera para México. Usa la búsqueda de Google "
+            "para encontrar costos promedio reales en MXN relacionados con lo que el usuario quiere "
+            "financiar. Responde ÚNICAMENTE con JSON con esta forma exacta: "
+            '{"topic": "categoría corta", "items": [{"label": "concepto", "emoji": "🙂", '
+            '"typical_mxn": 0, "note": "detalle breve"}], "summary": "una o dos frases en español"} '
+            "Incluye entre 3 y 5 conceptos relevantes (p. ej. estudio: colegiatura, libros, transporte; "
+            "viaje: vuelos, hospedaje, comidas, transporte; vida diaria: ropa, despensa, servicios). "
+            f"Tema: {query}. Detalles: {json.dumps(hints or {}, ensure_ascii=False)}."
+        )
+
+    async def research_topic(
+        self, query: str, hints: dict[str, Any] | None = None
+    ) -> "TopicResearch":
+        try:
+            response = await asyncio.wait_for(
+                self._client.aio.models.generate_content(
+                    model=self.model,
+                    contents=self._topic_prompt(query, hints),
+                    config=self._config(),
+                ),
+                timeout=self._timeout,
+            )
+        except asyncio.TimeoutError as exc:
+            raise ProviderUnavailableError(f"topic grounding timed out after {self._timeout}s") from exc
+        except ProviderError:
+            raise
+        except Exception as exc:
+            raise ProviderUnavailableError(f"topic grounding request failed: {exc!r}") from exc
+
+        text = getattr(response, "text", None) or ""
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise ProviderResponseError("topic grounding returned non-JSON output") from exc
+        if not isinstance(parsed, dict):
+            raise ProviderResponseError("topic grounding output was not an object")
+        items = _coerce_topic_items(parsed.get("items"))
+        if not items:
+            raise ProviderResponseError("topic grounding returned no usable items")
+        return TopicResearch(
+            source=self.name,
+            topic=str(parsed.get("topic") or query).strip() or str(query),
+            items=items,
+            summary=str(parsed.get("summary") or "").strip(),
+        )
+
 
 class FallbackResearch:
     """Try the primary provider, transparently fall back on any provider failure."""
@@ -184,3 +243,144 @@ class FallbackResearch:
             return await self._primary.research(query, hints)
         except ProviderError:
             return await self._fallback.research(query, hints)
+
+    async def research_topic(
+        self, query: str, hints: dict[str, Any] | None = None
+    ) -> "TopicResearch":
+        try:
+            return await self._primary.research_topic(query, hints)
+        except ProviderError:
+            return await self._fallback.research_topic(query, hints)
+
+
+@dataclass(frozen=True)
+class TopicResearch:
+    """A topical cost breakdown used to personalize a loan's purpose."""
+
+    source: str
+    topic: str
+    items: list[dict[str, Any]]
+    summary: str
+
+
+# (keywords, topic label, items). Deterministic fallback so the loan detail still
+# has real-ish figures when grounding is unavailable (offline / PR_SWITCH).
+_TOPIC_TABLE: tuple[tuple[tuple[str, ...], str, list[dict[str, Any]]], ...] = (
+    (
+        ("estudio", "escuela", "universidad", "maestria", "maestría", "curso", "educacion", "educación", "colegiatura", "carrera"),
+        "estudios",
+        [
+            {"label": "Colegiatura (semestre)", "emoji": "🎓", "typical_mxn": 35000, "note": "universidad privada"},
+            {"label": "Libros y útiles", "emoji": "📚", "typical_mxn": 4000, "note": "por semestre"},
+            {"label": "Transporte", "emoji": "🚌", "typical_mxn": 1500, "note": "mensual"},
+            {"label": "Equipo / laptop", "emoji": "💻", "typical_mxn": 12000, "note": "una vez"},
+        ],
+    ),
+    (
+        ("viaje", "viajar", "vacacion", "vacación", "playa", "vuelo", "turismo", "luna de miel"),
+        "viaje",
+        [
+            {"label": "Vuelo redondo", "emoji": "✈️", "typical_mxn": 9000, "note": "nacional"},
+            {"label": "Hospedaje por noche", "emoji": "🏨", "typical_mxn": 1500, "note": "por noche"},
+            {"label": "Comidas por día", "emoji": "🍽️", "typical_mxn": 600, "note": "por día"},
+            {"label": "Transporte local", "emoji": "🚕", "typical_mxn": 250, "note": "por día"},
+        ],
+    ),
+    (
+        ("vida diaria", "diario", "ropa", "despensa", "gastos", "hogar", "servicios", "casa"),
+        "vida diaria",
+        [
+            {"label": "Despensa", "emoji": "🛒", "typical_mxn": 4500, "note": "mensual"},
+            {"label": "Ropa y calzado", "emoji": "👕", "typical_mxn": 1500, "note": "mensual"},
+            {"label": "Servicios (luz, agua, internet)", "emoji": "💡", "typical_mxn": 1800, "note": "mensual"},
+            {"label": "Renta / hipoteca", "emoji": "🏠", "typical_mxn": 8000, "note": "mensual"},
+        ],
+    ),
+    (
+        ("negocio", "emprendimiento", "tienda", "inventario", "empresa", "pyme"),
+        "negocio",
+        [
+            {"label": "Inventario inicial", "emoji": "📦", "typical_mxn": 25000, "note": "una vez"},
+            {"label": "Renta de local", "emoji": "🏪", "typical_mxn": 12000, "note": "mensual"},
+            {"label": "Equipo y herramientas", "emoji": "🧰", "typical_mxn": 15000, "note": "una vez"},
+        ],
+    ),
+    (
+        ("auto", "carro", "moto", "vehiculo", "vehículo", "camioneta"),
+        "auto",
+        [
+            {"label": "Enganche", "emoji": "🚗", "typical_mxn": 40000, "note": "20% del valor"},
+            {"label": "Seguro anual", "emoji": "🛡️", "typical_mxn": 9000, "note": "anual"},
+            {"label": "Mantenimiento", "emoji": "🔧", "typical_mxn": 3500, "note": "por servicio"},
+        ],
+    ),
+    (
+        ("salud", "medico", "médico", "medicina", "hospital", "dental", "enfermedad", "tratamiento"),
+        "salud",
+        [
+            {"label": "Consulta / tratamiento", "emoji": "🩺", "typical_mxn": 3500, "note": "por consulta"},
+            {"label": "Medicamentos", "emoji": "💊", "typical_mxn": 2000, "note": "por tratamiento"},
+            {"label": "Estudios de laboratorio", "emoji": "🧪", "typical_mxn": 2500, "note": "por estudio"},
+        ],
+    ),
+    (
+        ("deuda", "tarjeta", "consolidar", "pagar", "adeudo"),
+        "deudas",
+        [
+            {"label": "Pago de tarjeta", "emoji": "💳", "typical_mxn": 8000, "note": "saldo actual"},
+            {"label": "Préstamo personal", "emoji": "🏦", "typical_mxn": 15000, "note": "saldo actual"},
+        ],
+    ),
+    (
+        ("boda", "evento", "fiesta", "xv", "cumpleaños"),
+        "evento",
+        [
+            {"label": "Banquete por persona", "emoji": "🍽️", "typical_mxn": 1200, "note": "por persona"},
+            {"label": "Vestimenta", "emoji": "👗", "typical_mxn": 8000, "note": "una vez"},
+            {"label": "Salón y música", "emoji": "🎉", "typical_mxn": 30000, "note": "una vez"},
+        ],
+    ),
+)
+
+_DEFAULT_TOPIC_ITEMS: list[dict[str, Any]] = [
+    {"label": "Gasto principal", "emoji": "💡", "typical_mxn": 5000, "note": "estimado"},
+    {"label": "Gastos relacionados", "emoji": "🧾", "typical_mxn": 2000, "note": "estimado"},
+]
+
+
+def _coerce_topic_items(raw: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw, list):
+        return []
+    items: list[dict[str, Any]] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        label = str(entry.get("label") or "").strip()
+        if not label:
+            continue
+        try:
+            amount = round(float(entry.get("typical_mxn") or entry.get("typicalMxn") or 0.0), 2)
+        except (TypeError, ValueError):
+            amount = 0.0
+        items.append(
+            {
+                "label": label,
+                "emoji": str(entry.get("emoji") or "💡").strip() or "💡",
+                "typical_mxn": amount,
+                "note": str(entry.get("note") or "").strip(),
+            }
+        )
+    return items[:6]
+
+
+def _static_topic(source: str, query: str, hints: dict[str, Any] | None = None) -> TopicResearch:
+    text = f"{query} {json.dumps(hints or {}, ensure_ascii=False)}".lower()
+    for keywords, topic, items in _TOPIC_TABLE:
+        if any(keyword in text for keyword in keywords):
+            return TopicResearch(source=source, topic=topic, items=[dict(item) for item in items], summary="")
+    return TopicResearch(
+        source=source,
+        topic=str(query).strip() or "gastos",
+        items=[dict(item) for item in _DEFAULT_TOPIC_ITEMS],
+        summary="",
+    )

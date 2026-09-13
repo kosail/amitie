@@ -882,6 +882,8 @@ async def create_loan(
     apr: float = loan_offer.DEFAULT_APR,
     term_months: int = loan_offer.DEFAULT_TERM_MONTHS,
     loan_request_id: str | None = None,
+    purpose: str | None = None,
+    purpose_private: bool = False,
 ) -> dict[str, Any]:
     if amount is None or float(amount) <= 0:
         return {"status": "error", "issues": ["amount must be positive"]}
@@ -919,7 +921,7 @@ async def create_loan(
         (
             "INSERT INTO loans (id, user_id, loan_request_id, amount, apr, term_months, "
             "opening_fee, insurance_fee, cat, monthly_payment, total_interest, total_cost, "
-            "status, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "status, purpose, purpose_private, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 loan_id,
                 user_id,
@@ -934,6 +936,8 @@ async def create_loan(
                 terms["totalInterest"],
                 terms["totalCost"],
                 "active",
+                (purpose or None),
+                1 if purpose_private else 0,
                 now,
             ),
         )
@@ -963,4 +967,87 @@ async def create_loan(
             )
         )
     await database.batch(statements)
-    return {"status": "ok", "loan": {"id": loan_id, "userId": user_id, **terms}}
+    return {
+        "status": "ok",
+        "loan": {
+            "id": loan_id,
+            "userId": user_id,
+            "purpose": purpose or None,
+            "purposePrivate": bool(purpose_private),
+            **terms,
+        },
+    }
+
+
+def _loan_row(row: Any) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "userId": row["user_id"],
+        "loanRequestId": row["loan_request_id"],
+        "amount": row["amount"],
+        "apr": row["apr"],
+        "termMonths": row["term_months"],
+        "openingFee": row["opening_fee"],
+        "insuranceFee": row["insurance_fee"],
+        "cat": row["cat"],
+        "monthlyPayment": row["monthly_payment"],
+        "totalInterest": row["total_interest"],
+        "totalCost": row["total_cost"],
+        "status": row["status"],
+        "purpose": row["purpose"],
+        "purposePrivate": bool(row["purpose_private"]),
+        "createdAt": row["created_at"],
+    }
+
+
+_LOAN_SELECT = (
+    "SELECT id, user_id, loan_request_id, amount, apr, term_months, opening_fee, insurance_fee, "
+    "cat, monthly_payment, total_interest, total_cost, status, purpose, purpose_private, created_at "
+    "FROM loans"
+)
+
+
+async def list_loans(database: DatabasePort, user_id: str) -> list[dict[str, Any]]:
+    """The user's created loans (newest first)."""
+    rows = await database.fetch_all(
+        f"{_LOAN_SELECT} WHERE user_id = ? ORDER BY created_at DESC, id DESC",
+        (user_id,),
+    )
+    return [_loan_row(row) for row in rows]
+
+
+async def get_loan(database: DatabasePort, user_id: str, loan_id: str) -> dict[str, Any] | None:
+    row = await database.fetch_one(
+        f"{_LOAN_SELECT} WHERE id = ? AND user_id = ?",
+        (loan_id, user_id),
+    )
+    return _loan_row(row) if row is not None else None
+
+
+async def loan_context(database: DatabasePort, user_id: str, loan_id: str) -> dict[str, Any] | None:
+    """Fresh, loan-scoped values for hydrating a `loan_detail` surface.
+
+    Regenerates the amortization schedule deterministically from the stored loan
+    terms (INV-015) so placeholders/bindings never serve stale values.
+    """
+    loan = await get_loan(database, user_id, loan_id)
+    if loan is None:
+        return None
+    schedule = loan_offer.terms_for(
+        float(loan["amount"]),
+        apr=float(loan["apr"]),
+        term_months=int(loan["termMonths"]),
+        opening_fee_pct=(float(loan["openingFee"]) / float(loan["amount"]))
+        if float(loan["amount"]) > 0
+        else loan_offer.DEFAULT_OPENING_FEE_PCT,
+        insurance_fee_pct=(float(loan["insuranceFee"]) / float(loan["amount"]))
+        if float(loan["amount"]) > 0
+        else loan_offer.DEFAULT_INSURANCE_FEE_PCT,
+    )["schedule"]
+    return {
+        "loan": loan,
+        "schedule": schedule,
+        "remainingBalance": float(loan["amount"]),
+        "progressPercent": 0,
+        "loanId": loan_id,
+    }
