@@ -45,7 +45,7 @@ class ScriptedProvider:
         self._results = list(results)
         self.calls: list[list] = []
 
-    async def generate(self, messages, tools=None, response_schema=None, temperature=None):
+    async def generate(self, messages, tools=None, response_schema=None, temperature=None, max_tokens=None):
         self.calls.append(list(messages))
         if not self._results:
             return text_result("(sin guion)")

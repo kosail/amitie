@@ -63,11 +63,12 @@ class FallbackLLM:
         tools: Tools | None = None,
         response_schema: dict[str, Any] | None = None,
         temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> LLMResult:
         if self._primary_ready():
             try:
                 return await self._generate_with(
-                    self._primary, messages, tools, response_schema, temperature
+                    self._primary, messages, tools, response_schema, temperature, max_tokens
                 )
             except ProviderUnavailableError as exc:
                 self._cooldown_until = self._clock() + self._cooldown_seconds
@@ -78,7 +79,7 @@ class FallbackLLM:
                     fallback=self._fallback.name,
                 )
         return await self._generate_with(
-            self._fallback, messages, tools, response_schema, temperature
+            self._fallback, messages, tools, response_schema, temperature, max_tokens
         )
 
     async def _generate_with(
@@ -88,6 +89,7 @@ class FallbackLLM:
         tools: Tools | None,
         response_schema: dict[str, Any] | None,
         temperature: float | None,
+        max_tokens: int | None = None,
     ) -> LLMResult:
         started = time.perf_counter()
         result: LLMResult | None = None
@@ -98,6 +100,7 @@ class FallbackLLM:
                 tools=tools,
                 response_schema=response_schema,
                 temperature=temperature,
+                max_tokens=max_tokens,
             )
             return result
         except Exception as exc:

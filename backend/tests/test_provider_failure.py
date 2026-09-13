@@ -32,7 +32,7 @@ class FailingProvider:
     name = "failing"
     model = "failing"
 
-    async def generate(self, messages, tools=None, response_schema=None, temperature=None):
+    async def generate(self, messages, tools=None, response_schema=None, temperature=None, max_tokens=None):
         raise ProviderUnavailableError("provider down")
 
 
@@ -40,7 +40,7 @@ class TextOnlyProvider:
     name = "textonly"
     model = "textonly"
 
-    async def generate(self, messages, tools=None, response_schema=None, temperature=None):
+    async def generate(self, messages, tools=None, response_schema=None, temperature=None, max_tokens=None):
         return LLMResult(
             text="solo texto", tool_calls=(), usage=Usage(1, 1, 2), provider="textonly", model="textonly"
         )
@@ -67,7 +67,7 @@ class SwitchProvider:
     def push(self, *results):
         self._queue.extend(results)
 
-    async def generate(self, messages, tools=None, response_schema=None, temperature=None):
+    async def generate(self, messages, tools=None, response_schema=None, temperature=None, max_tokens=None):
         if self.fail:
             raise ProviderUnavailableError("key deleted")
         if self._queue:

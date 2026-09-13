@@ -17,7 +17,7 @@ class NullProvider:
     name = "null"
     model = "null"
 
-    async def generate(self, messages, tools=None, response_schema=None, temperature=None):
+    async def generate(self, messages, tools=None, response_schema=None, temperature=None, max_tokens=None):
         return LLMResult(text="", tool_calls=(), usage=Usage(0, 0, 0), provider="null", model="null")
 
 

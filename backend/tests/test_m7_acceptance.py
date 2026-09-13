@@ -88,7 +88,7 @@ class QueueProvider:
     def push(self, *results: LLMResult) -> None:
         self._queue.extend(results)
 
-    async def generate(self, messages, tools=None, response_schema=None, temperature=None):
+    async def generate(self, messages, tools=None, response_schema=None, temperature=None, max_tokens=None):
         self.seen.append(" ".join(m.content or "" for m in messages))
         if self._queue:
             return self._queue.pop(0)

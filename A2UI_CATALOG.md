@@ -125,6 +125,13 @@ Required by milestone:
 - **M8 (added):** `AssumptionChip` (Caja de Cristal).
 - **Loans (added):** `LineChart`, `BarChart`, `ForecastChart`, `ScenarioComparison`, `LoanOffer` (engine-backed offer + risk for the loans consult).
 
+**Loans terminal subset (mobile-supported).** The loans consult emits only:
+`Column, Row, Card, Text, Heading, Divider, Badge, Button, ProgressBar, List,
+ScenarioComparison, PlanTable, ForecastChart, LineChart, BreakAlert, LoanOffer`.
+Canonical item shapes are in `API_KNOWLEDGE.md` §6. The backend normalizes model
+output (`ui_contract/normalize.py`) so `action` is always an object and numeric
+props are literals or `{"path": ...}` bindings before validation (`REQ-LM-13`).
+
 Everything else in §6 is reserved for later milestones and must not be emitted until the frontend confirms support. Adding components is additive (see §10), so the catalog ID remains `amitie.standard.v1`.
 
 ## 9. Example — La Mesa debt surface

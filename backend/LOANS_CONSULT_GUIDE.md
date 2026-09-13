@@ -202,18 +202,19 @@ The system prompt is assembled from:
 1. Role: La Mesa, voice-first loan advisor for Mexico; answer in Spanish (`es-MX`).
 2. **`BANK_LOAN_CONTEXT.md`** contents (see §8). If empty, say so internally and
    fall back to a cautious generic answer.
-3. The catalog description (`ui_contract/prompt.py::describe_components`,
-   `ALLOWED ACTIONS`) and the flat-component shape reminder.
-4. The **output contract** above, the confidence rule, and the placeholder rule.
+3. The catalog description restricted to the terminal component set the mobile
+   catalog implements (`agent/loans.py::_describe_allowed`) and the flat-component
+   shape reminder.
+4. The **output contract** above, the confidence rule, and the binding/action rules.
 5. Instruction: `terminal_response = null` when more information is needed.
 6. **Insight mandate (anti-generic):** must include `ScenarioComparison`
    (base vs accelerated, with interest/months saved), name the first credit to
    attack (creditor + APR), propose one concrete action with amount + measured
    effect, and mention subscription leak / quincena pressure when relevant. Cite
    the user's real numbers; generic advice and invented figures are forbidden.
-7. **Rich-UI rule:** a terminal UI must include a payment forecast (`ForecastChart`
-   or `LineChart`) and a payment schedule (`PlanTable`), plus key metrics
-   (`ProgressBar`/`Badge`).
+7. **Rich-UI rule:** a terminal UI includes a payment forecast (`ForecastChart`/
+   `LineChart`), a payment schedule (`PlanTable`), `BreakAlert` when the analysis
+   detects a break, and key metrics (`ProgressBar`/`Badge`).
 8. **Audience directive (`REQ-LM-11`):** the backend calls `get_audience(user_id)`
    and injects a deterministic `simple | standard | detailed` directive derived
    from age, accessibility, `education_level` and real activity. With `simple` the
@@ -222,9 +223,15 @@ The system prompt is assembled from:
    CAT, DTI, the full risk panel and charts are required; `standard` keeps the
    current mandate. The audience object is also written to the surface data model
    at `/audience`.
+9. **Shapes (`REQ-LM-13`):** `action` MUST be an object
+   `{"event": {"name": ..., "context": {}}}`; numeric props MUST be a number or a
+   `{"path": "/loan/..."}` binding; `{{dot.path}}` placeholders are only for text.
+   `ui_contract/normalize.py` rewrites bare action strings and whole-placeholder
+   numeric props before validation, so the persisted payload is always valid.
 
-The user turn carries the user data (§6) **plus the deterministic `Analisis`**
-(§6.1), **the audience object**, plus the running conversation text.
+The user turn carries a **compacted** credit history (raw transactions dropped),
+**plus the deterministic `Analisis`** (§6.1), **the audience object**, plus the
+running conversation text.
 
 ### 5.3 Provider mechanics
 
@@ -233,8 +240,11 @@ The user turn carries the user data (§6) **plus the deterministic `Analisis`**
 - **DeepSeek:** the adapter cannot enforce a JSON schema; include the schema in the
   prompt and set `response_format={"type":"json_object"}` (already the adapter's
   behavior when `response_schema` is provided).
-- Parse defensively: accept raw JSON or fenced ```` ```json ````blocks; on parse
-  failure, retry once with the error appended; then degrade to a text-only turn.
+- Parse defensively: accept raw JSON or fenced ```` ```json ````blocks. There is a
+  **single** attempt bounded by `LOANS_LLM_DEADLINE_SECONDS` and
+  `LOANS_MAX_TOKENS`; on timeout, provider failure, invalid output, or a
+  low-confidence terminal, `agent/loans_fallback.py` returns a deterministic,
+  schema-valid terminal so the consult stays within the 5 s budget.
 
 ### 5.4 Confidence gate & persistence
 

@@ -16,7 +16,7 @@ class RecordingProvider:
         self._result = result
         self.calls: list[dict] = []
 
-    async def generate(self, messages, tools=None, response_schema=None, temperature=None):
+    async def generate(self, messages, tools=None, response_schema=None, temperature=None, max_tokens=None):
         self.calls.append({"messages": list(messages), "tools": list(tools or [])})
         return self._result
 

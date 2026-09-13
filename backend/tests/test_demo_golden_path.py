@@ -103,7 +103,7 @@ class QueueProvider:
     def push(self, *results):
         self._queue.extend(results)
 
-    async def generate(self, messages, tools=None, response_schema=None, temperature=None):
+    async def generate(self, messages, tools=None, response_schema=None, temperature=None, max_tokens=None):
         self.calls += 1
         if self._queue:
             return self._queue.pop(0)

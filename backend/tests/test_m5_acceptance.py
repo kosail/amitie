@@ -69,7 +69,7 @@ class DynamicProvider:
                 return match.group(1)
         return "unknown"
 
-    async def generate(self, messages, tools=None, response_schema=None, temperature=None):
+    async def generate(self, messages, tools=None, response_schema=None, temperature=None, max_tokens=None):
         if self._step == 0:
             self._turn += 1
             actor = self._actors[self._turn]

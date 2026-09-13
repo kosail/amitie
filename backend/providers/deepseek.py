@@ -78,6 +78,7 @@ class DeepSeekLLM:
         tools: Tools | None = None,
         response_schema: dict[str, Any] | None = None,
         temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> LLMResult:
         payload: dict[str, Any] = {
             "model": self.model,
@@ -100,6 +101,8 @@ class DeepSeekLLM:
             payload["response_format"] = {"type": "json_object"}
         if temperature is not None:
             payload["temperature"] = temperature
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
         if not self._thinking:
             payload["thinking"] = {"type": "disabled"}
 

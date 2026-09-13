@@ -52,7 +52,7 @@ class QueueProvider:
         self._payloads = list(payloads)
         self.calls = 0
 
-    async def generate(self, messages, tools=None, response_schema=None, temperature=None):
+    async def generate(self, messages, tools=None, response_schema=None, temperature=None, max_tokens=None):
         self.calls += 1
         payload = self._payloads.pop(0) if self._payloads else {"response_text": "", "confidence": 0}
         text = payload if isinstance(payload, str) else json.dumps(payload)
@@ -67,7 +67,7 @@ class CapturingProvider:
         self._payload = payload
         self.messages = []
 
-    async def generate(self, messages, tools=None, response_schema=None, temperature=None):
+    async def generate(self, messages, tools=None, response_schema=None, temperature=None, max_tokens=None):
         self.messages = list(messages)
         return LLMResult(
             text=json.dumps(self._payload),
@@ -231,7 +231,7 @@ class LoansConsultTest(unittest.TestCase):
         )
         self.assertEqual(data_model["audience"]["level"], "simple")
 
-    def test_missing_loan_offer_is_rejected(self) -> None:
+    def test_missing_loan_offer_falls_back_to_deterministic_terminal(self) -> None:
         bad = {
             "response_text": "…",
             "confidence": 0.9,
@@ -244,7 +244,7 @@ class LoansConsultTest(unittest.TestCase):
                 "data_model": {},
             },
         }
-        with TestClient(self._app([bad, bad])) as client:
+        with TestClient(self._app([bad])) as client:
             session = parse_multipart(
                 client.post("/api/loans/greeting", json={"user_id": "u_don"})
             )[0]["session_id"]
@@ -253,8 +253,85 @@ class LoansConsultTest(unittest.TestCase):
                     "/api/loans/consult", json={"session_id": session, "text": "crédito"}
                 )
             )
-        self.assertEqual(payload["status"], "error")
-        self.assertEqual(payload["error_code"], "agent_error")
+        self.assertEqual(payload["status"], "ok", payload)
+        terminal = payload["terminal_response"]
+        self.assertIsNotNone(terminal)
+        components = next(
+            m for m in terminal["a2ui"] if "updateComponents" in m
+        )["updateComponents"]["components"]
+        offer = next(c for c in components if c["component"] == "LoanOffer")
+        self.assertGreater(float(offer["amount"]), 0)
+
+    def test_bare_action_and_placeholders_are_normalized(self) -> None:
+        generated = {
+            "response_text": "Aquí está tu oferta.",
+            "confidence": 0.9,
+            "terminal_response": {
+                "catalog_id": "amitie.standard.v1",
+                "components": [
+                    {"id": "root", "component": "Column", "children": ["offer"], "gap": 12},
+                    {
+                        "id": "offer",
+                        "component": "LoanOffer",
+                        "amount": "{{loan.amount}}",
+                        "apr": "{{loan.apr}}",
+                        "months": "{{loan.termMonths}}",
+                        "monthlyPayment": "{{loan.monthlyPayment}}",
+                        "totalInterest": "{{loan.totalInterest}}",
+                        "cat": "{{loan.cat}}",
+                        "action": "request_loan",
+                    },
+                ],
+                "data_model": {},
+            },
+        }
+        with TestClient(self._app([generated])) as client:
+            session = parse_multipart(
+                client.post("/api/loans/greeting", json={"user_id": "u_don"})
+            )[0]["session_id"]
+            payload, _ = parse_multipart(
+                client.post(
+                    "/api/loans/consult", json={"session_id": session, "text": "crédito"}
+                )
+            )
+        self.assertEqual(payload["status"], "ok", payload)
+        terminal = payload["terminal_response"]
+        self.assertIsNotNone(terminal)
+        components = next(
+            m for m in terminal["a2ui"] if "updateComponents" in m
+        )["updateComponents"]["components"]
+        offer = next(c for c in components if c["component"] == "LoanOffer")
+        self.assertIsInstance(offer["amount"], (int, float))
+        self.assertGreater(offer["amount"], 0)
+        self.assertIn("event", offer["action"])
+        self.assertEqual(offer["action"]["event"]["name"], "request_loan")
+
+    def test_llm_timeout_returns_deterministic_fallback(self) -> None:
+        class SlowProvider(CapturingProvider):
+            async def generate(self, messages, tools=None, response_schema=None, temperature=None, max_tokens=None):
+                await asyncio.sleep(0.5)
+                return await super().generate(
+                    messages, tools, response_schema, temperature, max_tokens
+                )
+
+        provider = SlowProvider(_terminal("tarde", 0.9))
+        settings = Settings(
+            database_path=self.db_path,
+            audio_cache_dir=str(Path(self._tmp.name) / "audio"),
+            loans_llm_deadline_seconds=0.05,
+        )
+        app = create_app(provider=provider, settings=settings, tts=FakeTTS())
+        with TestClient(app) as client:
+            session = parse_multipart(
+                client.post("/api/loans/greeting", json={"user_id": "u_don"})
+            )[0]["session_id"]
+            payload, _ = parse_multipart(
+                client.post(
+                    "/api/loans/consult", json={"session_id": session, "text": "crédito"}
+                )
+            )
+        self.assertEqual(payload["status"], "ok", payload)
+        self.assertIsNotNone(payload["terminal_response"])
 
     def test_consult_unknown_session_404(self) -> None:
         with TestClient(self._app([])) as client:

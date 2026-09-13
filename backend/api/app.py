@@ -116,7 +116,13 @@ def create_app(
             tracer=tracer,
             max_model_calls=resolved.agent_max_model_calls,
         )
-        loans_service = LoansConsultService(provider=llm, toolbox=toolbox, tracer=tracer)
+        loans_service = LoansConsultService(
+            provider=llm,
+            toolbox=toolbox,
+            tracer=tracer,
+            deadline_seconds=resolved.loans_llm_deadline_seconds,
+            max_tokens=resolved.loans_max_tokens,
+        )
         app.state.settings = resolved
         app.state.database = database
         app.state.tracer = tracer

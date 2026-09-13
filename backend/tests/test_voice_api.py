@@ -17,7 +17,7 @@ class FakeLLM:
     name = "fake"
     model = "fake"
 
-    async def generate(self, messages, tools=None, response_schema=None, temperature=None):
+    async def generate(self, messages, tools=None, response_schema=None, temperature=None, max_tokens=None):
         return LLMResult(text="ok", tool_calls=(), usage=Usage(), provider="fake", model="fake")
 
 
