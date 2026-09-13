@@ -21,14 +21,26 @@ from providers.voice import STTProvider, TTSProvider
 
 _EXTENSIONS = {"audio/mpeg": ".mp3", "audio/mp3": ".mp3", "audio/wav": ".wav", "audio/ogg": ".ogg"}
 
+# Bump when `normalize_for_speech` changes so cached audio is regenerated.
+_SPEECH_NORM_VERSION = "speech-v2"
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
 def text_hash(text: str, voice_id: str = "", speed: float = 1.0) -> str:
-    """Stable cache key. Primarily the text, plus voice/speed so different voices don't collide."""
-    material = f"{text.strip()}|{voice_id}|{round(float(speed), 3)}"
+    """Stable cache key over the *spoken* form, plus voice/speed.
+
+    Keying on `normalize_for_speech(text)` (not the raw text) means a change to
+    the normalization rewrites the pronunciation and the cache misses, so old
+    assets are never served with the wrong words. `_SPEECH_NORM_VERSION` forces
+    a one-time regeneration whenever the transform changes.
+    """
+    material = (
+        f"{_SPEECH_NORM_VERSION}|{normalize_for_speech(text).strip()}|"
+        f"{voice_id}|{round(float(speed), 3)}"
+    )
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 

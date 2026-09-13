@@ -79,7 +79,7 @@ class VoiceToolsTest(unittest.TestCase):
             asyncio.run(run())
             self.assertEqual(tts.calls, 1)
 
-    def test_grouping_is_normalized_for_provider_but_stored_text_kept(self) -> None:
+    def test_speech_text_is_normalized_for_provider_but_stored_text_kept(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             database = LocalSQLiteDatabase(Path(tmp) / "voice.sqlite3")
             tts = FakeTTS()
@@ -93,24 +93,54 @@ class VoiceToolsTest(unittest.TestCase):
                 async with InProcessToolbox({"voice": server}) as toolbox:
                     first = await toolbox.call(
                         "synthesize_speech",
-                        {"text": "Cuesta $7,000 al mes", "user_id": "u_don", "voice_id": "v1"},
+                        {"text": "Cuesta $7,000.00 al mes", "user_id": "u_don", "voice_id": "v1"},
                     )
                     self.assertEqual(first["status"], "ok")
                     self.assertFalse(first["cached"])
 
                     meta = await toolbox.call("get_audio", {"asset_id": first["audio_id"]})
-                    self.assertEqual(meta["text"], "Cuesta $7,000 al mes")
+                    self.assertEqual(meta["text"], "Cuesta $7,000.00 al mes")
 
                     second = await toolbox.call(
                         "synthesize_speech",
-                        {"text": "Cuesta $7,000 al mes", "user_id": "u_don", "voice_id": "v1"},
+                        {"text": "Cuesta $7,000.00 al mes", "user_id": "u_don", "voice_id": "v1"},
                     )
                     self.assertTrue(second["cached"])
                     self.assertEqual(first["audio_id"], second["audio_id"])
                 await database.close()
 
             asyncio.run(run())
-            self.assertEqual(tts.texts, ["Cuesta $7000 al mes"])
+            self.assertEqual(tts.texts, ["Cuesta 7000 pesos al mes"])
+            self.assertEqual(tts.calls, 1)
+
+    def test_cache_key_uses_the_spoken_form(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            database = LocalSQLiteDatabase(Path(tmp) / "voice.sqlite3")
+            tts = FakeTTS()
+            server = build_voice_server(
+                database, tts, FakeSTT(), cache_dir=str(Path(tmp) / "audio")
+            )
+
+            async def run() -> None:
+                await apply_schema(database)
+                await seed(database)
+                async with InProcessToolbox({"voice": server}) as toolbox:
+                    first = await toolbox.call(
+                        "synthesize_speech",
+                        {"text": "$1,000.00", "user_id": "u_don", "voice_id": "v1"},
+                    )
+                    second = await toolbox.call(
+                        "synthesize_speech",
+                        {"text": "1000 pesos", "user_id": "u_don", "voice_id": "v1"},
+                    )
+                    self.assertEqual(first["status"], "ok")
+                    self.assertFalse(first["cached"])
+                    self.assertTrue(second["cached"])
+                    self.assertEqual(first["audio_id"], second["audio_id"])
+                await database.close()
+
+            asyncio.run(run())
+            self.assertEqual(tts.texts, ["1000 pesos"])
             self.assertEqual(tts.calls, 1)
 
     def test_unavailable_tts_degrades(self) -> None:

@@ -53,6 +53,37 @@ def _loan_offer_component() -> dict[str, Any]:
     }
 
 
+def scenario_component(options: Any) -> dict[str, Any] | None:
+    """The loan payment-term comparison card (plazos), built from engine `options`."""
+    if not isinstance(options, list):
+        return None
+    scenarios: list[dict[str, Any]] = []
+    recommended_index = 0
+    for index, option in enumerate(options):
+        if not isinstance(option, Mapping):
+            continue
+        scenario: dict[str, Any] = {
+            "label": str(option.get("label") or f"{option.get('months')} meses"),
+            "monthlyPayment": option.get("monthlyPayment"),
+            "payoffMonths": option.get("months"),
+            "totalInterest": option.get("totalInterest"),
+        }
+        if option.get("reason"):
+            scenario["note"] = str(option["reason"])
+        scenarios.append(scenario)
+        if option.get("recommended"):
+            recommended_index = len(scenarios) - 1
+    if not scenarios:
+        return None
+    return {
+        "id": "scenarios",
+        "component": "ScenarioComparison",
+        "title": "Opciones de plazo",
+        "highlightIndex": recommended_index,
+        "scenarios": scenarios,
+    }
+
+
 def build_terminal(
     *,
     profile: Mapping[str, Any] | None = None,
@@ -104,17 +135,9 @@ def build_terminal(
         {"id": "intro", "component": "Text", "variant": "body", "text": text},
     ]
 
-    scenarios = analysis_payload.get("scenarios") or []
-    if scenarios:
-        components.append(
-            {
-                "id": "scenarios",
-                "component": "ScenarioComparison",
-                "title": "Escenarios de pago",
-                "highlightIndex": 2,
-                "scenarios": scenarios,
-            }
-        )
+    scenarios = scenario_component(propose.get("options"))
+    if scenarios is not None:
+        components.append(scenarios)
         components[0]["children"].append("scenarios")
 
     components.append(_loan_offer_component())

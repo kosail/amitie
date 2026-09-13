@@ -231,6 +231,13 @@ class LoansConsultService:
             "bindings a /loan (p. ej. {\"path\": \"/loan/amount\"}, {\"path\": \"/loan/monthlyPayment\"}); "
             "el backend ya colocó los valores en data_model bajo 'loan'. NUNCA inventes montos, tasas ni "
             "pagos. El MONTO siempre debe aparecer.",
+            "OPCIONES DE PLAZO: la oferta incluye `options` (6/12/24/36/48 meses), cada una con su pago "
+            "mensual e interés total del motor, y una `recommendation` con el plazo sugerido y su razón. "
+            "Para ScenarioComparison usa SOLO esas opciones (label \"N meses\", monthlyPayment, "
+            "payoffMonths = meses, totalInterest) y resalta la que trae recommended=true. Menciona en "
+            "response_text por qué recomiendas ese plazo (usa `recommendation.reason`). El backend "
+            "sobreescribe estos valores con el motor; no uses los escenarios de deuda del análisis para "
+            "las opciones de plazo.",
             "",
             "FORMAS OBLIGATORIAS:",
             "- action SIEMPRE es un objeto: {\"event\": {\"name\": \"request_loan\", \"context\": {}}}, "
@@ -244,21 +251,23 @@ class LoansConsultService:
             lines += ["ADAPTACIÓN DE AUDIENCIA (obligatoria): " + directive, ""]
         if level == "simple":
             lines += [
-                "MANDATO (audiencia simple): incluye LoanOffer y como máximo un PlanTable corto, "
-                "en lenguaje llano. NO incluyas ScenarioComparison, CAT, DTI, gráficas ni panel de riesgo.",
+                "MANDATO (audiencia simple): incluye LoanOffer y, como comparación de plazos, "
+                "ScenarioComparison con las opciones de la oferta (`options`), en lenguaje llano. "
+                "NO incluyas CAT, DTI, gráficas ni panel de riesgo.",
                 "El response_text abre con el monto y el pago mensual.",
             ]
         elif level == "detailed":
             lines += [
-                "MANDATO (audiencia detallada): incluye ScenarioComparison (escenarios del análisis), "
-                "PlanTable, ForecastChart, LineChart, BreakAlert (si el análisis detecta quiebre) y "
-                "LoanOffer. Añade la siguiente mejor acción con monto y efecto medido.",
+                "MANDATO (audiencia detallada): incluye ScenarioComparison con las opciones de plazo de "
+                "la oferta (`options`), PlanTable, ForecastChart, LineChart, BreakAlert (si el análisis "
+                "detecta quiebre) y LoanOffer. Añade la siguiente mejor acción con monto y efecto medido.",
                 "El response_text abre con el hallazgo más importante y específico.",
             ]
         else:
             lines += [
-                "MANDATO (audiencia estándar): incluye ScenarioComparison, PlanTable y LoanOffer; "
-                "menciona la siguiente mejor acción con monto y efecto medido.",
+                "MANDATO (audiencia estándar): incluye ScenarioComparison con las opciones de plazo de la "
+                "oferta (`options`), PlanTable y LoanOffer; menciona la siguiente mejor acción con monto "
+                "y efecto medido.",
                 "El response_text abre con el hallazgo más importante y específico.",
             ]
         lines += [
@@ -407,6 +416,8 @@ class LoansConsultService:
         if terminal is not None:
             propose = offer.get("offer", offer) if isinstance(offer, dict) else {}
             terms = propose.get("offer", {}) if isinstance(propose, dict) else {}
+            if isinstance(propose, dict):
+                self._apply_term_options(terminal, propose.get("options"))
             terminal.setdefault("data_model", {})
             if isinstance(terminal["data_model"], dict):
                 if isinstance(audience, dict):
@@ -472,6 +483,45 @@ class LoansConsultService:
         ):
             return "LoanOffer debe incluir amount (numérico o enlace a /loan/amount)"
         return None
+
+    @staticmethod
+    def _apply_term_options(terminal: dict[str, Any], options: Any) -> None:
+        """Force the terminal's comparison cards to the engine's plazo options.
+
+        The model may emit debt-payoff scenarios (or none); the engine's loan-term
+        options are the source of truth, so replace them deterministically.
+        """
+        scenario = loans_fallback.scenario_component(options)
+        if scenario is None:
+            return
+        components = terminal.get("components")
+        if not isinstance(components, list):
+            return
+        existing = next(
+            (
+                component
+                for component in components
+                if isinstance(component, dict)
+                and component.get("component") == "ScenarioComparison"
+            ),
+            None,
+        )
+        if isinstance(existing, dict):
+            existing["scenarios"] = scenario["scenarios"]
+            existing["highlightIndex"] = scenario["highlightIndex"]
+            existing["title"] = scenario["title"]
+            return
+        root = next(
+            (
+                component
+                for component in components
+                if isinstance(component, dict) and isinstance(component.get("children"), list)
+            ),
+            None,
+        )
+        if isinstance(root, dict):
+            components.append(scenario)
+            root["children"].append(scenario["id"])
 
     async def _persist_terminal(
         self, terminal: dict[str, Any], user_id: str, loan_request_id: str

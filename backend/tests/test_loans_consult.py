@@ -335,6 +335,20 @@ class LoansConsultTest(unittest.TestCase):
             )
         self.assertEqual(payload["status"], "ok", payload)
         self.assertIsNotNone(payload["terminal_response"])
+        components = next(
+            message
+            for message in payload["terminal_response"]["a2ui"]
+            if "updateComponents" in message
+        )["updateComponents"]["components"]
+        scenario = next(
+            component for component in components if component["component"] == "ScenarioComparison"
+        )
+        self.assertEqual([row["payoffMonths"] for row in scenario["scenarios"]], [6, 12, 24, 36, 48])
+        for row in scenario["scenarios"]:
+            self.assertGreater(row["monthlyPayment"], 0)
+            self.assertGreater(row["totalInterest"], 0)
+        highlighted = scenario["scenarios"][scenario["highlightIndex"]]
+        self.assertIn("note", highlighted)
 
     def test_consult_unknown_session_404(self) -> None:
         with TestClient(self._app([])) as client:

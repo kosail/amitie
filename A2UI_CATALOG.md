@@ -131,6 +131,16 @@ ScenarioComparison, PlanTable, ForecastChart, LineChart, BreakAlert, LoanOffer`.
 Canonical item shapes are in `API_KNOWLEDGE.md` §6. The backend normalizes model
 output (`ui_contract/normalize.py`) so `action` is always an object and numeric
 props are literals or `{"path": ...}` bindings before validation (`REQ-LM-13`).
+In a **loans terminal**, `ScenarioComparison.scenarios` carries the offered loan's
+**payment-term (plazo) options** (`label` = "N meses", `payoffMonths` = term
+months, `monthlyPayment`, `totalInterest`), computed by `engine/loan_offer.py`
+(`term_options`, 6/12/24/36/48). The term marked `recommended` (passed as
+`highlightIndex`) is derived per applicant by `recommend_term` from the profile,
+payment likelihood/behavior and requested amount — never a fixed term — and the
+recommended scenario may carry an optional `note` with the plain-language reason.
+The offer itself (`LoanOffer.termMonths` and its payment/interest/CAT/schedule) is
+presented at the recommended plazo. Debt-payoff scenarios (`analyze_loans`) remain
+in the La Mesa / El Revés flows, not in the loans terminal.
 
 Everything else in §6 is reserved for later milestones and must not be emitted until the frontend confirms support. Adding components is additive (see §10), so the catalog ID remains `amitie.standard.v1`.
 
@@ -172,6 +182,6 @@ A2UI v0.9 has no audio message type, so speech rides the surface **data model** 
 - In accessible mode (`amitie.voz-color.v1`), every emitted surface carries a `/speech` object:
   `{ "text": string, "audioRef": "/api/audio/{asset_id}", "provider": string }`.
 - The `audioRef` points at the `voice` MCP-generated asset, cached by text hash. The frontend fetches it via `GET /api/audio/{asset_id}` and plays it.
-- Spoken numbers are normalized **for synthesis only**: digit-grouping separators are stripped before the TTS provider (`$7,000` → a plain `7000`, spoken "siete mil"), because some engines otherwise read the comma literally. The cache key, `/speech.text`, and `GET /api/audio` metadata keep the original formatting, so the UI still shows `$7,000`.
+- Spoken numbers are normalized **for synthesis only**: grouping separators, currency, and trailing cents are rewritten into the Spanish spoken form before the TTS provider (`$1,000.00` → `1000 pesos`, spoken "mil pesos"; `5,000–200,000 MXN` → "cinco mil a doscientos mil pesos"), because engines like the local Piper/espeak path read `$` as "dólar" and `,` as "coma". The audio cache is keyed on this spoken form (`speech-v2`), while `/speech.text` and `GET /api/audio` metadata keep the original formatting, so the UI still shows `$1,000.00`.
 - Mutation responses (`POST /api/message`, `/api/action`, negotiation, loans, `GET /api/ui/{id}`) additionally expose a top-level `audio_ref` field for convenience.
 - Audio **input** is transcribed through the `voice` MCP (`transcribe_audio`) before the agent interprets it; the transcription is treated as the user's `text`.

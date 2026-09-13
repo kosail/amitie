@@ -201,6 +201,149 @@ def terms_for(
     }
 
 
+TERM_CANDIDATES = (6, 12, 24, 36, 48)
+
+
+def term_options(
+    amount: float,
+    *,
+    apr: float = DEFAULT_APR,
+    opening_fee_pct: float = DEFAULT_OPENING_FEE_PCT,
+    insurance_fee_pct: float = DEFAULT_INSURANCE_FEE_PCT,
+    recommended_months: int | None = None,
+) -> list[dict[str, Any]]:
+    """Deterministic plazo options for a fixed principal (loan-term comparison).
+
+    Every option is computed by `terms_for`, so the LLM never invents a payment
+    or an interest total (INV-015). The chosen term is flagged `recommended` by
+    `recommend_term`, which reads the applicant's profile and behavior.
+    """
+    if amount <= 0:
+        return []
+    months_set = {*TERM_CANDIDATES}
+    if recommended_months:
+        months_set.add(int(recommended_months))
+    options: list[dict[str, Any]] = []
+    for months in sorted(months_set):
+        terms = terms_for(
+            amount,
+            apr=apr,
+            term_months=months,
+            opening_fee_pct=opening_fee_pct,
+            insurance_fee_pct=insurance_fee_pct,
+        )
+        options.append(
+            {
+                "months": months,
+                "label": f"{months} meses",
+                "monthlyPayment": terms["monthlyPayment"],
+                "totalInterest": terms["totalInterest"],
+                "totalCost": terms["totalCost"],
+                "cat": terms["cat"],
+                "recommended": recommended_months is not None and months == int(recommended_months),
+            }
+        )
+    return options
+
+
+def _clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
+    return max(low, min(high, value))
+
+
+# (weight, risk key, reason) — each component's normalized value is in [0, 1].
+_RISK_FACTORS: tuple[tuple[float, str, str], ...] = (
+    (2.0, "income_cv", "tus ingresos varían mes a mes"),
+    (1.0, "expense_cv", "tus gastos cambian mes a mes"),
+    (2.0, "low_buffer", "tu colchón de ahorro es menor a un mes de gastos"),
+    (2.0, "weak_history", "tu historial de pago reciente"),
+    (1.0, "subscription_load", "tus suscripciones pesan en tu ingreso"),
+    (1.0, "tight_quincena", "tu quincena queda muy ajustada"),
+    (1.0, "savings_delay", "así no retrasas tu meta de ahorro"),
+    (2.0, "amount_pressure", "el monto que pediste frente a tu ingreso"),
+)
+
+
+def _risk_components(signals: Mapping[str, Any]) -> dict[str, float]:
+    income_cv = float(signals.get("income_cv") or 0.0)
+    expense_cv = float(signals.get("expense_cv") or 0.0)
+    buffer_months = signals.get("buffer_months")
+    on_time = signals.get("on_time_ratio")
+    history_available = bool(signals.get("history_available"))
+    subscription_share = float(signals.get("subscription_share") or 0.0)
+    amount_to_income = float(signals.get("amount_to_income") or 0.0)
+    dti_cap = float(signals.get("dti_cap") or DEFAULT_DTI_CAP)
+    return {
+        "income_cv": _clamp(income_cv / 0.30),
+        "expense_cv": _clamp(expense_cv / 0.30),
+        "low_buffer": 1.0 if (buffer_months is not None and buffer_months < 1) else 0.0,
+        "weak_history": _clamp(1.0 - float(on_time)) if (history_available and on_time is not None) else 0.3,
+        "subscription_load": _clamp(subscription_share / 0.15),
+        "tight_quincena": 1.0 if signals.get("quincena_tight") else 0.0,
+        "savings_delay": 1.0 if signals.get("savings_delay") else 0.0,
+        "amount_pressure": _clamp(amount_to_income / dti_cap) if dti_cap > 0 else 0.0,
+    }
+
+
+def _risk_score(signals: Mapping[str, Any]) -> tuple[float, str]:
+    """Return `(risk in [0,1], dominant factor's plain-Spanish reason)`."""
+    components = _risk_components(signals)
+    total_weight = sum(weight for weight, _, _ in _RISK_FACTORS) or 1.0
+    score = sum(weight * components[key] for weight, key, _ in _RISK_FACTORS) / total_weight
+    _, _, reason = max(_RISK_FACTORS, key=lambda factor: factor[0] * components[factor[1]])
+    return _clamp(score), reason
+
+
+def recommend_term(
+    options: Sequence[Mapping[str, Any]],
+    *,
+    income: float,
+    min_payment: float,
+    max_payment: float,
+    signals: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Pick the best plazo for this applicant: least interest while affordable.
+
+    A risk-weighted score trades total interest (favored by strong, stable
+    profiles) against the monthly burden (favored by volatile income, thin
+    liquidity, weak payment history, subscription load, a tight quincena, a
+    savings goal at risk, or a large amount relative to income). Only plazos whose
+    payment fits the affordable ceiling are eligible.
+    """
+    if not options:
+        return {"months": DEFAULT_TERM_MONTHS, "reason": "", "risk": 0.0}
+    risk, factor_reason = _risk_score(signals)
+    feasible = [option for option in options if float(option.get("monthlyPayment") or 0.0) <= max_payment + 1e-6]
+    if not feasible:
+        longest = max(options, key=lambda option: int(option.get("months") or 0))
+        return {
+            "months": int(longest["months"]),
+            "reason": "para que la mensualidad sea lo más baja posible",
+            "risk": risk,
+        }
+
+    payments = [float(option.get("monthlyPayment") or 0.0) for option in feasible]
+    interests = [float(option.get("totalInterest") or 0.0) for option in feasible]
+    pay_min, pay_max = min(payments), max(payments)
+    int_min, int_max = min(interests), max(interests)
+    burden_weight = min(max(0.25 + 0.55 * risk, 0.25), 0.80)
+    cost_weight = 1.0 - burden_weight
+
+    best: Mapping[str, Any] | None = None
+    best_score = float("inf")
+    for option in feasible:
+        burden = (float(option.get("monthlyPayment") or 0.0) - pay_min) / (pay_max - pay_min) if pay_max > pay_min else 0.0
+        cost = (float(option.get("totalInterest") or 0.0) - int_min) / (int_max - int_min) if int_max > int_min else 0.0
+        score = cost_weight * cost + burden_weight * burden
+        months = int(option.get("months") or 0)
+        if score < best_score - 1e-12 or (
+            abs(score - best_score) <= 1e-12 and best is not None and months < int(best.get("months") or 0)
+        ):
+            best, best_score = option, score
+    assert best is not None  # feasible is non-empty
+    reason = factor_reason if risk >= 0.20 else "así pagas menos intereses en total"
+    return {"months": int(best["months"]), "reason": reason, "risk": round(risk, 3)}
+
+
 def propose_offer(
     context: Mapping[str, Any],
     *,
@@ -235,6 +378,61 @@ def propose_offer(
         amount = max_principal
     amount = math.floor(max(amount, 0.0) / 500.0) * 500.0
 
+    total_balance = round(sum(float(a.get("balance") or 0.0) for a in (accounts or [])), 2)
+    buffer_months = round(total_balance / avg_spend, 1) if avg_spend > 0 else None
+    worst_existing = max((item.apr for item in liabilities), default=0.0)
+    apr_floor = max((float(p.get("aprFloor") or 0.0) for p in (lender_policies or [])), default=0.0)
+    income_series = _income_series(context.get("cashFlow") or {})
+    cv = round(pstdev(income_series) / mean(income_series), 3) if len(income_series) > 1 and mean(income_series) else 0.0
+    expense_series = [
+        float(month.get("expenses") or 0.0)
+        for month in ((context.get("cashFlow") or {}).get("months") or [])
+    ]
+    expense_cv = (
+        round(pstdev(expense_series) / mean(expense_series), 3)
+        if len(expense_series) > 1 and mean(expense_series)
+        else 0.0
+    )
+    periods = 2 if str(profile.get("payFrequency") or "").lower() in ("quincenal", "biweekly", "catorcenal") else 1
+    history = _payment_history_impact(payment_history or [])
+    baseline_payment = _payment(amount, apr, term_months) if amount > 0 else 0.0
+    baseline_savings = _savings_impact(saving_goals or [], surplus_after_base, baseline_payment)
+
+    signals: dict[str, Any] = {
+        "income_cv": cv,
+        "expense_cv": expense_cv,
+        "buffer_months": buffer_months,
+        "history_available": bool(history.get("available")),
+        "on_time_ratio": history.get("onTimeRatio"),
+        "subscription_share": (subscriptions / income) if income else 0.0,
+        "quincena_tight": bool(income and (income - avg_spend - min_payment) / periods < 0),
+        "savings_delay": bool(baseline_savings and baseline_savings.get("delayedMonths")),
+        "amount_to_income": (amount / income) if income else 0.0,
+        "dti_cap": dti_cap,
+    }
+
+    options = term_options(
+        amount,
+        apr=apr,
+        opening_fee_pct=opening_fee_pct,
+        insurance_fee_pct=insurance_fee_pct,
+    )
+    recommendation = recommend_term(
+        options,
+        income=income,
+        min_payment=min_payment,
+        max_payment=max_payment,
+        signals=signals,
+    )
+    recommended_months = recommendation["months"] if amount > 0 else term_months
+    for option in options:
+        option["recommended"] = option["months"] == recommended_months
+        if option["recommended"]:
+            option["reason"] = recommendation["reason"]
+
+    # The offer itself is presented at the recommended plazo so the headline
+    # (LoanOffer) and the highlighted comparison card agree.
+    term_months = recommended_months
     payment = round(_payment(amount, apr, term_months), 2) if amount > 0 else 0.0
     schedule = _schedule(amount, apr, term_months) if amount > 0 else []
     opening_fee = round(amount * opening_fee_pct, 2)
@@ -242,14 +440,7 @@ def propose_offer(
     total_interest = round(sum(row["interest"] for row in schedule), 2)
     total_cost = round(sum(row["payment"] for row in schedule) + opening_fee + insurance_fee, 2)
     cat = compute_cat(amount, apr, term_months, opening_fee, insurance_fee)
-
-    total_balance = round(sum(float(a.get("balance") or 0.0) for a in (accounts or [])), 2)
-    buffer_months = round(total_balance / avg_spend, 1) if avg_spend > 0 else None
     dti_with = round((min_payment + payment) / income, 4) if income else None
-    worst_existing = max((item.apr for item in liabilities), default=0.0)
-    apr_floor = max((float(p.get("aprFloor") or 0.0) for p in (lender_policies or [])), default=0.0)
-    income_series = _income_series(context.get("cashFlow") or {})
-    cv = round(pstdev(income_series) / mean(income_series), 3) if len(income_series) > 1 and mean(income_series) else 0.0
     savings_impact = _savings_impact(saving_goals or [], surplus_after_base, payment)
 
     warnings: list[str] = []
@@ -272,7 +463,6 @@ def propose_offer(
     if amount <= 0:
         warnings.append("Con tu ingreso y gastos actuales no hay margen para un crédito.")
 
-    periods = 2 if str(profile.get("payFrequency") or "").lower() in ("quincenal", "biweekly", "catorcenal") else 1
     net_per_period = round((income - payment) / periods, 2) if payroll_deduction else None
 
     return {
@@ -289,6 +479,14 @@ def propose_offer(
             "totalCost": total_cost,
         },
         "schedule": schedule,
+        "options": options,
+        "recommendation": {
+            **recommendation,
+            "text": (
+                f"Recomendamos {recommendation['months']} meses"
+                + (f": {recommendation['reason']}." if recommendation.get("reason") else ".")
+            ),
+        },
         "risk": {
             "dti": {"existing": _r(min_payment / income) if income else None, "withOffer": dti_with, "cap": dti_cap, "flag": bool(dti_with and dti_with > dti_cap)},
             "surplus": {"monthly": surplus, "discretionarySpend": _r(avg_discretionary), "subscriptions": subscriptions, "minPayment": min_payment},

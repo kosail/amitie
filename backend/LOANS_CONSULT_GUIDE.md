@@ -207,11 +207,18 @@ The system prompt is assembled from:
    shape reminder.
 4. The **output contract** above, the confidence rule, and the binding/action rules.
 5. Instruction: `terminal_response = null` when more information is needed.
-6. **Insight mandate (anti-generic):** must include `ScenarioComparison`
-   (base vs accelerated, with interest/months saved), name the first credit to
-   attack (creditor + APR), propose one concrete action with amount + measured
-   effect, and mention subscription leak / quincena pressure when relevant. Cite
-   the user's real numbers; generic advice and invented figures are forbidden.
+6. **Insight mandate (anti-generic):** must include `ScenarioComparison` with the
+   offered loan's **payment-term (plazo) options** from `offer.options`
+   (label "N meses", `monthlyPayment`, `payoffMonths` = months, `totalInterest`;
+   highlight the `recommended` term). `recommend_term` picks that term per
+   applicant from profile/behavior/amount (never a fixed 24), and the offer's own
+   `termMonths`/payment/CAT are presented at it. The backend deterministically
+   overwrites the model's scenario values with the engine options, so debt-payoff
+   scenarios from `analyze_loans` are never shown in the loans terminal. Must also
+   name the first credit to attack (creditor + APR), propose one concrete action
+   with amount + measured effect, and mention subscription leak / quincena
+   pressure when relevant. Cite the user's real numbers; generic advice and
+   invented figures are forbidden.
 7. **Rich-UI rule:** a terminal UI includes a payment forecast (`ForecastChart`/
    `LineChart`), a payment schedule (`PlanTable`), `BreakAlert` when the analysis
    detects a break, and key metrics (`ProgressBar`/`Badge`).
@@ -296,7 +303,9 @@ the user's own liabilities/transactions/subscriptions:
 - **scenarios** (`ScenarioComparison` data): monthly payment, payoff months,
   total interest, interest saved and months saved for the baseline plus preset
   extra payments and a **recommended** extra (the user's surplus, or their
-  subscription leak when there is no surplus);
+  subscription leak when there is no surplus). These are debt-payoff scenarios for
+  the La Mesa / El Revés flows; the **loans terminal** uses the offer's `options`
+  (loan payment terms) instead.
 - **payoffOrder** (per-creditor clear month under the chosen plan);
 - **highCost** (credits ranked by APR);
 - **behavior** (subscription load + share of income, expense volatility, average
