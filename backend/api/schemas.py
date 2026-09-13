@@ -35,6 +35,10 @@ class MessageRequest(BaseModel):
     language: str = "es-MX"
 
 
+class AgentGreetingRequest(BaseModel):
+    session_id: str
+
+
 class ActionRequest(BaseModel):
     surface_id: str
     name: str

@@ -252,6 +252,23 @@ or audio:
 
 Response: `AgentResponse` (§1). Render `a2ui`.
 
+### `POST /api/agent/greeting`
+
+Deterministic, personalized opening for the Asistente tab (**no LLM**).
+Request: `{ "session_id": "sess_…" }`.
+
+Response (`AgentResponse`):
+```json
+{ "status":"ok", "assistant_text":"Hola Ana, soy La Mesa, tu asesor de crédito. ¿En qué te puedo ayudar hoy?",
+  "audio_ref": "/api/audio/aud_…", "a2ui": [], "surface_id": null }
+```
+
+- `audio_ref` is present **only for accessible users** (`accessibility_mode != null`);
+  play it with `playAudioAsset`. Standard users get `assistant_text` only.
+- `a2ui` is `[]` and `surface_id` is `null` — this is a spoken greeting, not a surface.
+- `404` on unknown session. Call it once when the Asistente tab opens (no intent), before
+  the user's first turn.
+
 ### `POST /api/action`
 
 ```json
@@ -611,6 +628,7 @@ interface PaymentResponse { status: Status; applied_amount: number; liability: R
 | POST | `/api/login` | `{username,password}` | `LoginResponse` / 401 | demo/accesible |
 | POST | `/api/session` | `{user_id}` | `SessionResponse` | no auth |
 | POST | `/api/message` | `{session_id,text?\|audio_b64?,language}` | `AgentResponse` | render `a2ui` |
+| POST | `/api/agent/greeting` | `{session_id}` | `AgentResponse` (`audio_ref?`) | spoken greeting; `audio_ref` only for accessible |
 | POST | `/api/action` | `{surface_id,name,source_component_id,context}` | `AgentResponse` | `accept_offer` special |
 | GET | `/api/ui/{surface_id}` | – | `UiResponse` | hydrated; authoritative |
 | POST | `/api/negotiation/{session}/turn` | `{user_id,position}` | `AgentResponse` (`actor`,`round`) | El Revés |

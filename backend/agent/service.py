@@ -89,6 +89,53 @@ class AgentService:
         if name == "persist_ui":
             self._captured[name] = result
 
+    async def greeting(self, *, user_id: str) -> dict[str, Any]:
+        """Deterministic spoken greeting (no LLM, fast).
+
+        Personalizes by first name and only synthesizes audio for accessible
+        users (non-null accessibility mode), matching the voz-color contrast.
+        """
+        profile: dict[str, Any] = {}
+        try:
+            result = await self._toolbox.call("get_profile", {"user_id": user_id})
+            profile = (result or {}).get("profile") or {}
+        except Exception:
+            profile = {}
+        first = str(profile.get("name") or "").strip().split()
+        name = first[0] if first else ""
+        accessible = profile.get("accessibilityMode") is not None
+
+        if accessible:
+            text = f"Hola {name}. Soy La Mesa. ¿En qué te ayudo hoy?" if name else (
+                "Hola. Soy La Mesa. ¿En qué te ayudo hoy?"
+            )
+        else:
+            text = (
+                f"Hola {name}, soy La Mesa, tu asesor de crédito. ¿En qué te puedo ayudar hoy?"
+                if name
+                else "Hola, soy La Mesa, tu asesor de crédito. ¿En qué te puedo ayudar hoy?"
+            )
+
+        audio_ref: str | None = None
+        if accessible:
+            try:
+                synthesis = await self._toolbox.call(
+                    "synthesize_speech",
+                    {"text": text, "user_id": user_id, "voice_id": "", "speed": 1.0},
+                )
+                if isinstance(synthesis, dict) and synthesis.get("status") == "ok":
+                    audio_ref = synthesis.get("audio_ref")
+            except Exception:
+                audio_ref = None
+
+        return {
+            "status": "ok",
+            "assistant_text": text,
+            "audio_ref": audio_ref,
+            "a2ui": [],
+            "surface_id": None,
+        }
+
     async def _ensure_session(
         self, runner: InMemoryRunner, session_id: str, user_id: str
     ) -> None:
