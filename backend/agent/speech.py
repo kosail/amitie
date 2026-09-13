@@ -1,9 +1,13 @@
-"""Post-persist speech enrichment (REQ-ACC-03).
+"""Post-persist speech enrichment.
 
-After an accessible surface is persisted, synthesize its speech through the
-`voice` MCP and attach the audio reference to the surface data model and the
-result. Deterministic and shared by AgentService and NegotiationService so every
-accessible surface gets audio exactly once.
+After a surface is persisted, synthesize its speech through the `voice` MCP and
+attach the audio reference to the surface data model and the result. Deterministic
+and shared by AgentService and NegotiationService so every surface gets audio
+exactly once.
+
+Every audience gets audio now (product decision): accessible/simple users speak
+the simplified `speech` summary, everyone else speaks the assistant's reply text
+(`fallback_text`). Per-credit detail pages stay TTS-free (they never call this).
 """
 
 from __future__ import annotations
@@ -17,10 +21,18 @@ class SpeechEnricher:
     def __init__(self, toolbox: Toolbox) -> None:
         self._toolbox = toolbox
 
-    async def enrich(self, result: dict[str, Any] | None, *, user_id: str) -> dict[str, Any] | None:
-        if not result or not result.get("accessible"):
+    async def enrich(
+        self,
+        result: dict[str, Any] | None,
+        *,
+        user_id: str,
+        fallback_text: str = "",
+    ) -> dict[str, Any] | None:
+        if not result:
             return result
-        text = str(result.get("speech") or "").strip()
+        # Accessible/simple surfaces carry a purpose-built spoken summary; every
+        # other audience speaks the assistant's own reply.
+        text = str(result.get("speech") or "").strip() or str(fallback_text or "").strip()
         if not text:
             return result
         try:
@@ -52,3 +64,4 @@ class SpeechEnricher:
                 if isinstance(value, dict):
                     value["speech"] = payload
         return result
+

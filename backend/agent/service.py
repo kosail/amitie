@@ -148,16 +148,15 @@ class AgentService:
             )
 
         audio_ref: str | None = None
-        if accessible:
-            try:
-                synthesis = await self._toolbox.call(
-                    "synthesize_speech",
-                    {"text": text, "user_id": user_id, "voice_id": "", "speed": 1.0},
-                )
-                if isinstance(synthesis, dict) and synthesis.get("status") == "ok":
-                    audio_ref = synthesis.get("audio_ref")
-            except Exception:
-                audio_ref = None
+        try:
+            synthesis = await self._toolbox.call(
+                "synthesize_speech",
+                {"text": text, "user_id": user_id, "voice_id": "", "speed": 1.0},
+            )
+            if isinstance(synthesis, dict) and synthesis.get("status") == "ok":
+                audio_ref = synthesis.get("audio_ref")
+        except Exception:
+            audio_ref = None
 
         return {
             "status": "ok",
@@ -281,7 +280,9 @@ class AgentService:
                 "issues": captured.get("issues", []),
                 "assistant_text": assistant_text,
             }
-        captured = await self._speech.enrich(captured, user_id=user_id)
+        captured = await self._speech.enrich(
+            captured, user_id=user_id, fallback_text=assistant_text
+        )
         logger.info(
             "agent_turn_completed",
             session_id=session_id,

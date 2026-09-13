@@ -166,8 +166,9 @@ class M7AcceptanceTest(unittest.TestCase):
                 ).json()
                 self.assertEqual(standard["status"], "ok")
                 self.assertEqual(standard["catalog_id"], STANDARD_CATALOG_ID)
-                self.assertIsNone(standard["audio_ref"])
-                self.assertNotIn("speech", _data_model(standard["a2ui"]))
+                # Audio now plays for every audience; standard speaks the reply text.
+                self.assertTrue(standard["audio_ref"].startswith("/api/audio/"))
+                self.assertIn("speech", _data_model(standard["a2ui"]))
 
 
 if __name__ == "__main__":

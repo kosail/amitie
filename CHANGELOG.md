@@ -689,3 +689,13 @@
 - rationale: A taken credit must never be presented as an offer. Enforcing the strip deterministically (like the loans terminal's `_apply_term_options`) means correctness does not depend on the model obeying the prompt. Recomputing risk/schedule on hydration keeps the page fresh (INV-022) instead of freezing an offer-time snapshot.
 - impact: Backend suite 255 passing (updated the detail tests for the generalized `get_or_create(entity=..., entity_id=...)` and added strip/liability tests). Note: `db/seed.py` was changed outside this task so all liabilities' `creditor` is now "Banorte"; the three finance/loans-analysis tests that asserted "BBVA"/"Elektra" were updated to match the current seed. `npm run typecheck` clean; `openspec validate` 23/23.
 - follow_ups: Manual: open a taken loan → read-only page (no Aceptar); open a liability → page with Abonar (opens the payment modal) and a fresh balance after paying; `u_don` gets the emoji/color layout.
+
+## [2026-09-13] fix — greet/reply audio for every user (not only accessible)
+- agent: opencode / deepseek-flash
+- requirements: `openspec/changes/fix-api-base-url-and-assistant-greeting` (frontend, proposed); REQ-ACC-03
+- invariants: none (provider behavior unchanged; no wire change)
+- files: `backend/agent/service.py`, `backend/agent/speech.py`, `backend/tests/{test_agent_greeting,test_agent_service,test_m7_acceptance}.py`
+- decision: The frontend was hiding `audio_ref` playback behind `catalogId === 'voz-color'`, and the backend only synthesized for accessible users (`AgentService.greeting` gated on `accessibilityMode`; `SpeechEnricher.enrich` returned early unless `accessible`). Product decision: audio plays for everyone. Backend now: `greeting` always synthesizes; `SpeechEnricher.enrich` drops the `accessible` early-return and speaks `result["speech"]` when present, else `fallback_text` (the assistant's reply, passed by `run_turn`). Accessible/simple users still speak the simplified `speech` summary; standard/detailed users speak the reply text. Per-credit detail pages never call the enricher (stay TTS-free).
+- rationale: The frontend gate plus the backend gate meant standard users never got audio anywhere. Removing both and choosing the spoken text per audience keeps the accessible simplification while giving everyone audio.
+- impact: Backend suite 257 passing (greeting standard-audio test added; `SpeechEnricher` unit tests; M7 acceptance updated). Frontend removes the `voz-color` audio gate; typecheck clean; OpenSpec 24/24. TTS failure still degrades to no audio.
+- follow_ups: Manual: standard persona (`u_ana`) now hears the greeting/replies; verify under `PR_SWITCH` (local Piper) and with `GEMINI_API_KEY` for grounding.

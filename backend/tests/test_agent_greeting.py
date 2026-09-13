@@ -74,7 +74,7 @@ class AgentGreetingTest(unittest.TestCase):
         self.assertEqual(body["a2ui"], [])
         self.assertIsNone(body["surface_id"])
 
-    def test_standard_greeting_has_no_audio(self) -> None:
+    def test_standard_greeting_also_returns_audio(self) -> None:
         with TestClient(self._app()) as client:
             session_id = self._session(client, "u_ana")
             response = client.post("/api/agent/greeting", json={"session_id": session_id})
@@ -85,7 +85,8 @@ class AgentGreetingTest(unittest.TestCase):
         self.assertIn("Luna", body["assistant_text"])
         self.assertIn("asesora", body["assistant_text"])
         self.assertNotIn("La Mesa", body["assistant_text"])
-        self.assertIsNone(body["audio_ref"])
+        # Audio now plays for every audience, not only accessible users.
+        self.assertTrue(body["audio_ref"].startswith("/api/audio/"))
 
     def test_unknown_session_is_404(self) -> None:
         with TestClient(self._app()) as client:

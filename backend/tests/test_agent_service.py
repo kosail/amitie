@@ -227,3 +227,45 @@ class AgentServiceTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class _VoiceToolbox:
+    async def call(self, name, arguments=None):
+        if name == "synthesize_speech":
+            return {"status": "ok", "audio_ref": "/api/audio/aud_test", "provider": "fake"}
+        return {"status": "ok"}
+
+
+class SpeechEnricherTest(unittest.TestCase):
+    def test_standard_surface_speaks_fallback_text(self) -> None:
+        from agent.speech import SpeechEnricher
+
+        enricher = SpeechEnricher(_VoiceToolbox())
+        result = {
+            "surface_id": "s1",
+            "catalog_id": CATALOG_ID,
+            "accessible": False,
+            "speech": "",
+            "a2ui": [{"updateDataModel": {"surfaceId": "s1", "path": "/", "value": {}}}],
+        }
+        out = asyncio.run(enricher.enrich(result, user_id="u_ana", fallback_text="Hola Ana"))
+
+        self.assertEqual(out["audio_ref"], "/api/audio/aud_test")
+        payload = out["a2ui"][0]["updateDataModel"]["value"]["speech"]
+        self.assertEqual(payload["text"], "Hola Ana")
+
+    def test_accessible_surface_prefers_spoken_summary(self) -> None:
+        from agent.speech import SpeechEnricher
+
+        enricher = SpeechEnricher(_VoiceToolbox())
+        result = {
+            "surface_id": "s2",
+            "catalog_id": CATALOG_ID,
+            "accessible": True,
+            "speech": "resumen simple",
+            "a2ui": [{"updateDataModel": {"surfaceId": "s2", "path": "/", "value": {}}}],
+        }
+        out = asyncio.run(enricher.enrich(result, user_id="u_don", fallback_text="respuesta larga"))
+
+        payload = out["a2ui"][0]["updateDataModel"]["value"]["speech"]
+        self.assertEqual(payload["text"], "resumen simple")
