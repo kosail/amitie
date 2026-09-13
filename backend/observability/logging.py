@@ -7,6 +7,7 @@ import logging
 import sys
 
 from .context import current_trace_id
+from .logging_config import configure_logging
 
 
 class JsonFormatter(logging.Formatter):
@@ -23,11 +24,3 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
         return json.dumps(payload, ensure_ascii=False)
-
-
-def configure_logging(level: str = "INFO") -> None:
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(JsonFormatter())
-    root = logging.getLogger()
-    root.handlers[:] = [handler]
-    root.setLevel(level.upper())

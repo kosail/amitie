@@ -14,10 +14,13 @@ import argparse
 import asyncio
 
 from config import Settings, load_dotenv
+import structlog
 
 from .local_sqlite import LocalSQLiteDatabase
 from .schema import apply_schema
 from .seed import seed
+
+logger = structlog.get_logger(__name__)
 
 
 async def initialize(database_path: str) -> None:
@@ -37,7 +40,7 @@ def main() -> None:
 
     database_path = args.path or Settings.from_env().database_path
     asyncio.run(initialize(database_path))
-    print(f"local database ready at {database_path}")
+    logger.info("database_initialized", database_path=database_path)
 
 
 if __name__ == "__main__":

@@ -12,6 +12,8 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from agent.negotiation import NegotiationService
 from agent.loans import LoansConsultService
@@ -23,8 +25,12 @@ from mcp_servers.finance.server import build_finance_server
 from mcp_servers.toolbox import InProcessToolbox
 from mcp_servers.ui.server import build_ui_server
 from mcp_servers.voice.server import build_voice_server
+from observability.logging_config import configure_logging
 from observability.middleware import TraceMiddleware
 from observability.tracing import Tracer
+import structlog
+
+logger = structlog.get_logger(__name__)
 from providers.base import LLMProvider
 from providers.registry import (
     build_llm_gateway,
@@ -64,11 +70,14 @@ def create_app(
 ) -> FastAPI:
     load_dotenv()
     resolved = settings or Settings.from_env()
+    configure_logging(env=resolved.app_env, level=resolved.log_level)
     database = LocalSQLiteDatabase(resolved.database_path)
     tracer = Tracer(database)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        configure_logging(env=resolved.app_env, level=resolved.log_level)
+        logger.info("backend_started", app_env=resolved.app_env)
         await apply_schema(database)
         research_provider = research or build_research(resolved)
         tts_provider = tts or build_tts(resolved)
@@ -130,8 +139,31 @@ def create_app(
         finally:
             await toolbox.__aexit__(None, None, None)
             await database.close()
+            logger.info("backend_stopped")
 
-    app = FastAPI(title="La Mesa API", version="0.1.0", lifespan=lifespan)
+    tags_metadata = [
+        {"name": "session", "description": "Gestión de sesiones de usuario."},
+        {"name": "auth", "description": "Autenticación y login local de demostración."},
+        {"name": "message", "description": "Interacción con el agente y generación de UI A2UI."},
+        {"name": "action", "description": "Ejecución de acciones del usuario sobre la interfaz generada."},
+        {"name": "loans", "description": "Consulta y análisis de créditos asistidos por voz (Loans & Credits)."},
+        {"name": "negotiation", "description": "Simulación y negociación de deuda (El Revés)."},
+        {"name": "finance", "description": "Cuentas bancarias, transferencias SPEI, pasivos y abonos."},
+        {"name": "ui", "description": "Superficies A2UI dinámicas hidratadas."},
+        {"name": "audio", "description": "Activos de audio sintetizados (TTS)."},
+        {"name": "debug", "description": "Herramientas de diagnóstico, trazas y pruebas de proveedores."},
+    ]
+
+    app = FastAPI(
+        title="La Mesa API",
+        description="API para La Mesa y El Revés - Asistente Financiero Autónomo con A2UI y MCP",
+        version="0.1.0",
+        openapi_tags=tags_metadata,
+        openapi_url="/openapi.json",
+        docs_url="/docs",
+        redoc_url="/redoc",
+        lifespan=lifespan,
+    )
     app.add_middleware(
         CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
     )
@@ -151,8 +183,27 @@ def create_app(
         app.include_router(voice.router)
         app.include_router(debug.router)
 
+    @app.get("/", include_in_schema=False)
+    async def root() -> RedirectResponse:
+        return RedirectResponse(url="/swagger")
+
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/swagger", include_in_schema=False)
+    @app.get("/swagger/", include_in_schema=False)
+    @app.get("/api/swagger", include_in_schema=False)
+    async def swagger_ui() -> HTMLResponse:
+        return get_swagger_ui_html(
+            openapi_url=app.openapi_url or "/openapi.json",
+            title=f"{app.title} - Swagger UI",
+        )
+
+    @app.get("/openapi", include_in_schema=False)
+    @app.get("/api/openapi", include_in_schema=False)
+    @app.get("/api/openapi.json", include_in_schema=False)
+    async def openapi_schema() -> JSONResponse:
+        return JSONResponse(content=app.openapi())
 
     return app

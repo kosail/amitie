@@ -9,6 +9,8 @@ from __future__ import annotations
 import time
 from typing import Any, Awaitable, Callable
 
+import structlog
+
 from .context import trace_context
 from .tracing import TraceEvent, Tracer, new_trace_id
 
@@ -28,9 +30,18 @@ class TraceMiddleware:
             await self._app(scope, receive, send)
             return
 
-        trace_id = new_trace_id()
+        headers_raw = dict(scope.get("headers") or [])
+        header_trace = headers_raw.get(b"x-trace-id", b"").decode("latin1", errors="ignore").strip()
+        trace_id = header_trace or new_trace_id()
         started = time.perf_counter()
         status = {"code": 0}
+
+        structlog.contextvars.clear_contextvars()
+        structlog.contextvars.bind_contextvars(
+            trace_id=trace_id,
+            path=scope.get("path", ""),
+            method=scope.get("method", ""),
+        )
 
         async def send_with_trace(message: Message) -> None:
             if message["type"] == "http.response.start":
@@ -61,3 +72,4 @@ class TraceMiddleware:
                         },
                     ),
                 )
+                structlog.contextvars.clear_contextvars()

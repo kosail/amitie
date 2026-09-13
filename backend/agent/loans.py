@@ -22,6 +22,9 @@ from ui_contract.validator import validate_messages
 
 from . import loans_fallback
 from .bank_context import load_bank_context
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 CONFIDENCE_THRESHOLD = 0.80
 
@@ -313,6 +316,7 @@ class LoansConsultService:
         loan_request_id: str,
         history: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
+        logger.info("loans_consult_started", user_id=user_id, loan_request_id=loan_request_id)
         started = time.perf_counter()
         context = await self._toolbox.call("get_credit_history", {"user_id": user_id})
         analysis = await self._toolbox.call("analyze_loans", {"user_id": user_id})
@@ -416,7 +420,14 @@ class LoansConsultService:
                 terminal_payload = persisted
 
         audio = await self._synthesize(response_text, user_id)
-        await self._trace(started, error=error)
+        await self._trace(started, error=None)
+        logger.info(
+            "loans_consult_completed",
+            user_id=user_id,
+            loan_request_id=loan_request_id,
+            confidence=confidence,
+            has_terminal_response=terminal_payload is not None,
+        )
         return {
             "status": "ok",
             "loan_request_id": loan_request_id,

@@ -20,6 +20,9 @@ from ui_contract.prompt import build_system_prompt
 from .model import GatewayLlm, ModelCallLimitError
 from .speech import SpeechEnricher
 from .tools import build_adk_tools
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 APP_NAME = "lamina"
 AGENT_NAME = "lamina"
@@ -108,6 +111,12 @@ class AgentService:
         text: str | None = None,
         action: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        logger.info(
+            "agent_turn_started",
+            session_id=session_id,
+            user_id=user_id,
+            has_action=action is not None,
+        )
         started = time.perf_counter()
         runner = await self._ensure_runner()
         await self._ensure_session(runner, session_id, user_id)
@@ -185,6 +194,12 @@ class AgentService:
                 "assistant_text": assistant_text,
             }
         captured = await self._speech.enrich(captured, user_id=user_id)
+        logger.info(
+            "agent_turn_completed",
+            session_id=session_id,
+            user_id=user_id,
+            surface_id=captured.get("surface_id"),
+        )
         return {
             "status": "ok",
             "surface_id": captured.get("surface_id"),

@@ -16,6 +16,7 @@ lameenc>=1.7
 SpeechRecognition>=3.10
 audioop-lts>=0.2
 pydub>=0.25
+structlog>=24.1
 
 # Optional STT fallback (heavy: pulls ctranslate2/onnxruntime). Install it only
 # where faster-whisper is wanted; the adapter imports it lazily:

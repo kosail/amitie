@@ -27,6 +27,7 @@ async def create_session_row(database: DatabasePort, user_id: str) -> str:
 
 
 @router.post("/session", response_model=SessionResponse)
+@router.post("/sessions", response_model=SessionResponse, include_in_schema=False)
 async def create_session(
     payload: SessionRequest, database: DatabasePort = Depends(get_database)
 ) -> SessionResponse:

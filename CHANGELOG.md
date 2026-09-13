@@ -528,6 +528,38 @@
 - impact: `python -m db.init` now yields 5 users / 294 transactions; full suite 190 tests passing. Live login verified for all five against `./data/amitie.sqlite3`. `u_don` has no liabilities/transactions (kept intentionally) so the `simple` accessible path stays clean and the loan-offer test remains valid.
 - follow_ups: Frontend login screen should surface the 5 credentials; the demo script should pick the persona that matches the UI being showcased.
 
+## [2026-09-12] feat — OpenAPI and Swagger UI endpoints
+- agent: antigravity / gemini-3.8-flash
+- requirements: none
+- invariants: INV-010, INV-023
+- files: `backend/api/app.py`, `backend/tests/test_openapi_swagger.py`, `CHANGELOG.md`
+- decision: Added dedicated interactive Swagger UI and OpenAPI documentation endpoints:
+  - `GET /swagger` and `GET /swagger/` (as well as `GET /api/swagger`) serving interactive Swagger UI HTML via `get_swagger_ui_html`.
+  - `GET /openapi` and `GET /api/openapi` (as well as `GET /api/openapi.json` and standard `GET /openapi.json`) returning the generated OpenAPI schema JSON.
+  - Configured `FastAPI` instance with title, description, version, `openapi_url="/openapi.json"`, `docs_url="/docs"`, and `redoc_url="/redoc"`.
+  - Configured `.pth` in `.venv` so `uvicorn api.main:app --reload` runs cleanly from both the repository root and `backend/`.
+- rationale: Developer and judge tooling convenience: by default FastAPI only served Swagger UI at `/docs` (and `/swagger` returned 404), while OpenAPI was only at `/openapi.json`. Adding these explicit endpoints allows direct access to Swagger UI via `/swagger` and `/api/swagger`, and schema inspection via `/openapi`.
+- impact: Suite expanded from 190 to 198 tests, all passing.
+- follow_ups: none
+
+## [2026-09-12] feat — structured logging with structlog + trace_id propagation
+- agent: antigravity / gemini-3.8-flash
+- requirements: none
+- invariants: INV-018
+- files: `backend/requirements.txt`, `backend/config.py`, `backend/observability/logging_config.py`, `backend/observability/logging.py`, `backend/observability/context.py`, `backend/observability/middleware.py`, `backend/observability/__init__.py`, `backend/api/app.py`, `backend/providers/gateway.py`, `backend/db/init.py`, `backend/agent/{service,negotiation,loans}.py`, `backend/tests/test_structured_logging.py`, `CHANGELOG.md`
+- decision: Implemented structured logging with `structlog` aligned with `AGENTS.md` §6, §8 and `INV-018`:
+  - Created `observability/logging_config.py`: sets up `structlog` processors (`merge_contextvars`, `add_logger_name`, `add_log_level`, ISO timestamps, stack/exc formatting, and `_redact_sensitive_fields` defending against leaking API keys, passwords, raw audio, and financial payloads).
+  - Production mode (`APP_ENV=production`) outputs JSON logs; development mode (`APP_ENV=development`) outputs readable console logs.
+  - Standard library compatibility: `structlog.stdlib.ProcessorFormatter` with `foreign_pre_chain` ensures standard loggers (`uvicorn`, `httpx`, Google ADK, MCP SDK) produce the same structured format with `trace_id`.
+  - Configured `TraceMiddleware` and `trace_context` to bind incoming `x-trace-id` (or generated trace ID), `path`, and `method` into `structlog.contextvars`.
+  - Configured `lifespan` in `api/app.py` to initialize logging and log `backend_started` / `backend_stopped`.
+  - Replaced `print()` in `db/init.py` with structured logger.
+  - Added structured instrumentation in `agent/service.py`, `agent/negotiation.py`, `agent/loans.py`, and `providers/gateway.py`.
+- rationale: Fulfilled `AGENTS.md` §6 mandate ("Logging: structured logging only. Never `print`. Never log secrets, raw audio, or full financial payloads.") and integrated with the existing `trace_id` pipeline.
+- impact: Suite expanded from 198 to 204 tests, all passing. No regressions across any existing tests.
+- follow_ups: none
+
+
 ## [2026-09-13] fix — loans consult: normalize-then-validate + 5s deadline with deterministic fallback
 - agent: opencode / deepseek-flash
 - requirements: REQ-LM-12, REQ-LM-13
