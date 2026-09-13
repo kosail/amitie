@@ -16,6 +16,7 @@ from typing import Any
 
 from db.port import DatabasePort
 from providers.base import ProviderError
+from providers.speech_text import normalize_for_speech
 from providers.voice import STTProvider, TTSProvider
 
 _EXTENSIONS = {"audio/mpeg": ".mp3", "audio/mp3": ".mp3", "audio/wav": ".wav", "audio/ogg": ".ogg"}
@@ -78,7 +79,7 @@ async def synthesize_speech(
         }
 
     try:
-        result = await tts.synthesize(clean, voice_id, speed)
+        result = await tts.synthesize(normalize_for_speech(clean), voice_id, speed)
     except ProviderError as exc:
         return {"status": "unavailable", "reason": str(exc), "text": clean}
 

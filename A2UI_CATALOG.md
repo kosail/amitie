@@ -172,5 +172,6 @@ A2UI v0.9 has no audio message type, so speech rides the surface **data model** 
 - In accessible mode (`amitie.voz-color.v1`), every emitted surface carries a `/speech` object:
   `{ "text": string, "audioRef": "/api/audio/{asset_id}", "provider": string }`.
 - The `audioRef` points at the `voice` MCP-generated asset, cached by text hash. The frontend fetches it via `GET /api/audio/{asset_id}` and plays it.
+- Spoken numbers are normalized **for synthesis only**: digit-grouping separators are stripped before the TTS provider (`$7,000` → a plain `7000`, spoken "siete mil"), because some engines otherwise read the comma literally. The cache key, `/speech.text`, and `GET /api/audio` metadata keep the original formatting, so the UI still shows `$7,000`.
 - Mutation responses (`POST /api/message`, `/api/action`, negotiation, loans, `GET /api/ui/{id}`) additionally expose a top-level `audio_ref` field for convenience.
 - Audio **input** is transcribed through the `voice` MCP (`transcribe_audio`) before the agent interprets it; the transcription is treated as the user's `text`.
