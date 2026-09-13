@@ -815,6 +815,7 @@ async def compute_loan_offer(
     requested_amount: float | None = None,
     apr: float = loan_offer.DEFAULT_APR,
     term_months: int = loan_offer.DEFAULT_TERM_MONTHS,
+    requested_term: int | None = None,
     opening_fee_pct: float = loan_offer.DEFAULT_OPENING_FEE_PCT,
     insurance_fee_pct: float = loan_offer.DEFAULT_INSURANCE_FEE_PCT,
     dti_cap: float = loan_offer.DEFAULT_DTI_CAP,
@@ -833,6 +834,7 @@ async def compute_loan_offer(
         requested_amount=requested_amount,
         apr=apr,
         term_months=term_months,
+        requested_term=requested_term,
         opening_fee_pct=opening_fee_pct,
         insurance_fee_pct=insurance_fee_pct,
         dti_cap=dti_cap,
@@ -897,7 +899,12 @@ async def create_loan(
                     "issues": ["amount exceeds the offered amount"],
                 }
             apr = float(offered["apr"])
-            term_months = int(offered["term_months"])
+            if not (loan_offer.MIN_TERM <= int(term_months) <= loan_offer.MAX_TERM):
+                term_months = int(offered["term_months"])
+
+    # Honor the term the user chose; only fall back to the default when absent or
+    # outside the product range.
+    term_months = int(term_months) if loan_offer.MIN_TERM <= int(term_months) <= loan_offer.MAX_TERM else loan_offer.DEFAULT_TERM_MONTHS
 
     terms = loan_offer.terms_for(amount, apr=apr, term_months=term_months)
     loan_id = "loan_" + uuid.uuid4().hex[:10]

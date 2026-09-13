@@ -60,6 +60,16 @@ class FailingProvider:
         raise ProviderUnavailableError("provider down")
 
 
+class LoopingProvider:
+    """Always asks for another tool call, so a turn never reaches persist_ui."""
+
+    name = "looping"
+    model = "looping"
+
+    async def generate(self, messages, tools=None, response_schema=None, temperature=None, max_tokens=None):
+        return tool_call("get_financial_context", {"user_id": "u_ana"})
+
+
 def _persist_call() -> LLMResult:
     return tool_call(
         "persist_ui",
@@ -128,6 +138,32 @@ class AgentServiceTest(unittest.TestCase):
                 await database.close()
 
             asyncio.run(run())
+
+    def test_model_call_limit_returns_retryable_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            database = LocalSQLiteDatabase(Path(tmp) / "agent.sqlite3")
+
+            async def run() -> None:
+                await apply_schema(database)
+                await seed(database)
+                async with self._make_toolbox(database) as toolbox:
+                    service = AgentService(
+                        provider=LoopingProvider(), toolbox=toolbox, max_model_calls=3
+                    )
+                    result = await service.run_turn(session_id="s1", user_id="u_ana", text="deudas")
+                    self.assertEqual(result["status"], "error")
+                    self.assertEqual(result["error_code"], "model_call_limit")
+                    self.assertTrue(result["retryable"])
+                    self.assertIn("message", result)
+
+                await database.close()
+
+            asyncio.run(run())
+
+    def test_agent_call_budget_default(self) -> None:
+        from config import Settings
+
+        self.assertGreaterEqual(Settings().agent_max_model_calls, 12)
 
     def test_missing_persist_ui_returns_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

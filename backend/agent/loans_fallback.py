@@ -27,6 +27,20 @@ def _first_name(profile: Mapping[str, Any] | None) -> str:
     return name.split()[0] if name else ""
 
 
+def intake_response(
+    *, name: str | None = None, need_amount: bool = True, need_purpose: bool = False
+) -> str:
+    """Deterministic clarifying question when the consult lacks the amount/purpose."""
+    prefix = f"{name}, " if name else ""
+    if need_amount and need_purpose:
+        return f"{prefix}claro que sí. ¿Cuánto necesitas y para qué lo usarías?"
+    if need_amount:
+        return f"{prefix}claro que sí. ¿Qué monto necesitas? Puedo ofrecerte desde 5,000 pesos."
+    if need_purpose:
+        return f"{prefix}perfecto. ¿Para qué usarías el crédito?"
+    return f"{prefix}¿Me cuentas un poco más para ayudarte?"
+
+
 def _propose(offer: Any) -> dict[str, Any]:
     """Unwrap the `compute_loan_offer` tool result into the propose_offer dict."""
     if not isinstance(offer, Mapping):
@@ -67,6 +81,7 @@ def scenario_component(options: Any) -> dict[str, Any] | None:
             "monthlyPayment": option.get("monthlyPayment"),
             "payoffMonths": option.get("months"),
             "totalInterest": option.get("totalInterest"),
+            "requested": bool(option.get("requested")),
         }
         if option.get("reason"):
             scenario["note"] = str(option["reason"])
@@ -90,6 +105,8 @@ def build_terminal(
     audience: Mapping[str, Any] | None = None,
     offer: Any = None,
     analysis: Any = None,
+    requested_amount: float | None = None,
+    use_max: bool = False,
 ) -> dict[str, Any]:
     """Return `{response_text, terminal_response}`; terminal is None when not eligible."""
     propose = _propose(offer)
@@ -97,6 +114,15 @@ def build_terminal(
     warning_list = list(propose.get("warnings") or [])
     affordable = bool(propose.get("affordable")) and float(terms.get("amount") or 0.0) > 0
     name = _first_name(profile)
+
+    # Never fabricate an offer without an amount: ask instead of defaulting to the
+    # engine maximum.
+    if not use_max and (requested_amount is None or float(requested_amount) <= 0):
+        return {
+            "response_text": intake_response(name=name or None, need_amount=True),
+            "terminal_response": None,
+        }
+
     analysis_payload = (analysis or {}).get("analysis") if isinstance(analysis, Mapping) else None
     analysis_payload = analysis_payload if isinstance(analysis_payload, Mapping) else {}
 

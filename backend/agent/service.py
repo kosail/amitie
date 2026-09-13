@@ -27,6 +27,32 @@ logger = structlog.get_logger(__name__)
 APP_NAME = "lamina"
 AGENT_NAME = "lamina"
 
+
+def _is_llm_calls_limit(exc: BaseException) -> bool:
+    """True when an exception chain carries ADK's or our own LLM-call-limit error.
+
+    ADK wraps `LlmCallsLimitExceededError` in `DynamicNodeFailError` (and re-raises
+    it), so walk the chain (and the `error` attribute) by class name rather than
+    importing an internal ADK path that may move between versions.
+    """
+    seen: set[int] = set()
+    stack: list[BaseException] = [exc]
+    while stack:
+        current = stack.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if type(current).__name__ in ("LlmCallsLimitExceededError", "ModelCallLimitError"):
+            return True
+        nested = getattr(current, "error", None)
+        if isinstance(nested, BaseException):
+            stack.append(nested)
+        for link in (current.__cause__, current.__context__):
+            if isinstance(link, BaseException):
+                stack.append(link)
+    return False
+
+
 ROLE_DESCRIPTION = (
     "Eres Luna, una agente financiera para usuarios en México. Diagnosticas su "
     "situación de deuda y decides qué interfaz necesita el usuario. Tu nombre es Luna. "
@@ -211,7 +237,20 @@ class AgentService:
             error_code = "provider_unavailable"
             retryable = True
         except Exception as exc:  # keep the API resilient to ADK/tool failures
-            error = f"{type(exc).__name__}: {exc}"
+            if _is_llm_calls_limit(exc):
+                error = str(exc)
+                error_code = "model_call_limit"
+                retryable = True
+            else:
+                error = f"{type(exc).__name__}: {exc}"
+        if error_code == "model_call_limit":
+            logger.warning(
+                "agent_model_call_limit",
+                session_id=session_id,
+                user_id=user_id,
+                calls=self._model.calls,
+                max_calls=self._max_calls,
+            )
 
         assistant_text = "\n".join(text for text in assistant_texts if text).strip()
         await self._trace(started, error=error)

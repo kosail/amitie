@@ -22,6 +22,9 @@ from providers.base import (
     ToolCall,
     ToolSpec,
 )
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 _DEFAULT_SCHEMA: dict[str, Any] = {"type": "object", "properties": {}}
 
@@ -137,6 +140,14 @@ class GatewayLlm(BaseLlm):
     def reset_calls(self) -> None:
         self._calls = 0
 
+    @property
+    def calls(self) -> int:
+        return self._calls
+
+    @property
+    def limit(self) -> int:
+        return self.max_calls
+
     async def generate_content_async(self, llm_request: Any, stream: bool = False):
         self._calls += 1
         if self._calls > self.max_calls:
@@ -144,4 +155,10 @@ class GatewayLlm(BaseLlm):
         messages = to_messages(llm_request)
         tools = to_tool_specs(llm_request)
         result = await self.provider.generate(messages, tools=tools or None)
+        logger.info(
+            "agent_model_call",
+            index=self._calls,
+            max_calls=self.max_calls,
+            tool_calls=[call.name for call in result.tool_calls],
+        )
         yield to_llm_response(result)

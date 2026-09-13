@@ -16,6 +16,7 @@ from config import Settings
 from db.local_sqlite import LocalSQLiteDatabase
 from db.schema import apply_schema
 from db.seed import seed
+from engine import loan_offer
 from providers.base import LLMResult, Usage
 from providers.voice import SynthesisResult
 
@@ -158,7 +159,7 @@ class LoansConsultTest(unittest.TestCase):
             )[0]["session_id"]
             response = client.post(
                 "/api/loans/consult",
-                json={"session_id": session, "text": "quiero un crédito"},
+                json={"session_id": session, "text": "quiero un crédito de 5000 para un auto"},
             )
         payload, audio = parse_multipart(response)
         self.assertEqual(payload["status"], "ok", payload)
@@ -175,7 +176,7 @@ class LoansConsultTest(unittest.TestCase):
             payload, audio = parse_multipart(
                 client.post(
                     "/api/loans/consult",
-                    json={"session_id": session, "text": "crédito de 50000"},
+                    json={"session_id": session, "text": "crédito de 50000 para mi negocio"},
                 )
             )
             self.assertEqual(payload["status"], "ok", payload)
@@ -201,7 +202,7 @@ class LoansConsultTest(unittest.TestCase):
                 client.post("/api/loans/greeting", json={"user_id": "u_don"})
             )[0]["session_id"]
             client.post(
-                "/api/loans/consult", json={"session_id": session, "text": "crédito"}
+                "/api/loans/consult", json={"session_id": session, "text": "crédito de 5000 para un auto"}
             )
         joined = " ".join(message.content or "" for message in provider.messages)
         self.assertIn("Analisis determinista", joined)
@@ -210,6 +211,8 @@ class LoansConsultTest(unittest.TestCase):
         self.assertIn("Luna", joined)
         self.assertIn("asesora", joined)
         self.assertNotIn("La Mesa", joined)
+        # The long per-month schedule is trimmed from the prompt (latency).
+        self.assertIn("usa el binding /loan/schedule", joined)
 
     def test_prompt_adapts_to_low_literacy_audience(self) -> None:
         provider = CapturingProvider(_terminal("Listo.", 0.9))
@@ -220,7 +223,7 @@ class LoansConsultTest(unittest.TestCase):
             payload, _audio = parse_multipart(
                 client.post(
                     "/api/loans/consult",
-                    json={"session_id": session, "text": "quiero un crédito"},
+                    json={"session_id": session, "text": "quiero un crédito de 5000 para un auto"},
                 )
             )
         joined = " ".join(message.content or "" for message in provider.messages)
@@ -253,7 +256,7 @@ class LoansConsultTest(unittest.TestCase):
             )[0]["session_id"]
             payload, _ = parse_multipart(
                 client.post(
-                    "/api/loans/consult", json={"session_id": session, "text": "crédito"}
+                    "/api/loans/consult", json={"session_id": session, "text": "crédito de 5000 para un auto"}
                 )
             )
         self.assertEqual(payload["status"], "ok", payload)
@@ -294,7 +297,7 @@ class LoansConsultTest(unittest.TestCase):
             )[0]["session_id"]
             payload, _ = parse_multipart(
                 client.post(
-                    "/api/loans/consult", json={"session_id": session, "text": "crédito"}
+                    "/api/loans/consult", json={"session_id": session, "text": "crédito de 5000 para un auto"}
                 )
             )
         self.assertEqual(payload["status"], "ok", payload)
@@ -308,6 +311,149 @@ class LoansConsultTest(unittest.TestCase):
         self.assertGreater(offer["amount"], 0)
         self.assertIn("event", offer["action"])
         self.assertEqual(offer["action"]["event"]["name"], "request_loan")
+
+    def test_requested_term_requires_confirmation_then_is_honored(self) -> None:
+        with TestClient(self._app([_terminal("Listo, aquí está tu oferta.", 0.9)])) as client:
+            session = parse_multipart(
+                client.post("/api/loans/greeting", json={"user_id": "u_don"})
+            )[0]["session_id"]
+            confirm, _ = parse_multipart(
+                client.post(
+                    "/api/loans/consult",
+                    json={"session_id": session, "text": "quiero un crédito de 5000 a 12 meses"},
+                )
+            )
+            self.assertEqual(confirm["status"], "ok", confirm)
+            self.assertIsNone(confirm["terminal_response"])
+            self.assertIn("12 meses", confirm["response_text"])
+            self.assertEqual(self.provider.calls, 0)  # no LLM turn for the confirmation
+            loan_id = confirm["loan_request_id"]
+
+            terminal, _ = parse_multipart(
+                client.post(
+                    "/api/loans/consult",
+                    json={"session_id": session, "text": "sí, confirmo", "loan_request_id": loan_id},
+                )
+            )
+        self.assertEqual(self.provider.calls, 1)
+        self.assertIsNotNone(terminal["terminal_response"])
+        components = next(
+            message
+            for message in terminal["terminal_response"]["a2ui"]
+            if "updateComponents" in message
+        )["updateComponents"]["components"]
+        offer = next(c for c in components if c["component"] == "LoanOffer")
+        self.assertEqual(int(offer["months"]), 12)
+
+    def test_create_loan_honors_requested_term(self) -> None:
+        with TestClient(self._app([])) as client:
+            response = client.post(
+                "/api/loans",
+                json={
+                    "user_id": "u_don",
+                    "amount": 10000.0,
+                    "months": 12,
+                    "loan_request_id": "loan_term12",
+                },
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        loan = response.json()["loan"]
+        self.assertEqual(loan["termMonths"], 12)
+
+    def test_vague_turn_asks_for_amount_and_stays_open(self) -> None:
+        with TestClient(self._app([])) as client:
+            session = parse_multipart(
+                client.post("/api/loans/greeting", json={"user_id": "u_don"})
+            )[0]["session_id"]
+            payload, audio = parse_multipart(
+                client.post(
+                    "/api/loans/consult",
+                    json={"session_id": session, "text": "quiero un crédito"},
+                )
+            )
+        self.assertEqual(payload["status"], "ok", payload)
+        self.assertIsNone(payload["terminal_response"])
+        self.assertTrue(payload["response_text"])
+        self.assertTrue(payload["audio_ref"])
+        self.assertEqual(audio, b"MP3")
+        # The intake used the model once for a natural question; no offer was made.
+        self.assertEqual(self.provider.calls, 1)
+
+    def test_amount_persists_and_never_jumps_to_max(self) -> None:
+        with TestClient(self._app([_terminal("Listo, aquí está tu oferta.", 0.9)])) as client:
+            session = parse_multipart(
+                client.post("/api/loans/greeting", json={"user_id": "u_don"})
+            )[0]["session_id"]
+            first, _ = parse_multipart(
+                client.post(
+                    "/api/loans/consult",
+                    json={"session_id": session, "text": "quiero 5000 a 12 meses"},
+                )
+            )
+            # term confirmation also asks the (missing) purpose
+            self.assertIsNone(first["terminal_response"])
+            self.assertIn("12 meses", first["response_text"])
+            self.assertIn("para qué", first["response_text"])
+            loan_id = first["loan_request_id"]
+
+            second, _ = parse_multipart(
+                client.post(
+                    "/api/loans/consult",
+                    json={
+                        "session_id": session,
+                        "text": "sí, para un auto",
+                        "loan_request_id": loan_id,
+                    },
+                )
+            )
+        self.assertIsNotNone(second["terminal_response"])
+        components = next(
+            message
+            for message in second["terminal_response"]["a2ui"]
+            if "updateComponents" in message
+        )["updateComponents"]["components"]
+        offer = next(c for c in components if c["component"] == "LoanOffer")
+        self.assertEqual(int(offer["months"]), 12)
+        # u_don's maximum is far above 5,000: the persisted amount must win.
+        self.assertLessEqual(float(offer["amount"]), 5000.0 + 0.01)
+
+    def test_explicit_maximum_is_honored(self) -> None:
+        with TestClient(self._app([_terminal("Listo.", 0.9)])) as client:
+            session = parse_multipart(
+                client.post("/api/loans/greeting", json={"user_id": "u_don"})
+            )[0]["session_id"]
+            payload, _ = parse_multipart(
+                client.post(
+                    "/api/loans/consult",
+                    json={"session_id": session, "text": "dame el máximo, para un negocio"},
+                )
+            )
+        self.assertIsNotNone(payload["terminal_response"])
+        components = next(
+            message
+            for message in payload["terminal_response"]["a2ui"]
+            if "updateComponents" in message
+        )["updateComponents"]["components"]
+        offer = next(c for c in components if c["component"] == "LoanOffer")
+        self.assertGreater(float(offer["amount"]), 0)
+
+    def test_fallback_asks_instead_of_max_without_amount(self) -> None:
+        from agent import loans_fallback
+
+        result = loans_fallback.build_terminal(
+            profile={"name": "Don Miguel"},
+            offer={"offer": {"amount": 47500.0}},
+            requested_amount=None,
+            use_max=False,
+        )
+        self.assertIsNone(result["terminal_response"])
+        self.assertTrue(result["response_text"])
+
+    def test_latency_defaults(self) -> None:
+        settings = Settings()
+        self.assertGreaterEqual(settings.loans_llm_deadline_seconds, 6.0)
+        self.assertGreater(settings.loans_max_tokens, 900)
+        self.assertGreater(settings.loans_intake_deadline_seconds, 0)
 
     def test_llm_timeout_returns_deterministic_fallback(self) -> None:
         class SlowProvider(CapturingProvider):
@@ -330,7 +476,7 @@ class LoansConsultTest(unittest.TestCase):
             )[0]["session_id"]
             payload, _ = parse_multipart(
                 client.post(
-                    "/api/loans/consult", json={"session_id": session, "text": "crédito"}
+                    "/api/loans/consult", json={"session_id": session, "text": "crédito de 5000 para un auto"}
                 )
             )
         self.assertEqual(payload["status"], "ok", payload)
@@ -343,7 +489,14 @@ class LoansConsultTest(unittest.TestCase):
         scenario = next(
             component for component in components if component["component"] == "ScenarioComparison"
         )
-        self.assertEqual([row["payoffMonths"] for row in scenario["scenarios"]], [6, 12, 24, 36, 48])
+        offer_component = next(
+            component for component in components if component["component"] == "LoanOffer"
+        )
+        expected = sorted(
+            set(loan_offer.allowed_terms_for(float(offer_component["amount"])))
+            | {int(offer_component["months"])}
+        )
+        self.assertEqual([row["payoffMonths"] for row in scenario["scenarios"]], expected)
         for row in scenario["scenarios"]:
             self.assertGreater(row["monthlyPayment"], 0)
             self.assertGreater(row["totalInterest"], 0)

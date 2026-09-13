@@ -92,6 +92,42 @@ async def _append_turns(
     )
 
 
+_STATE_KEYS = (
+    "requested_amount",
+    "purpose",
+    "use_max",
+    "requested_term",
+    "term_confirmed",
+    "purpose_asked",
+)
+
+
+async def _load_state(database: DatabasePort, loan_id: str) -> dict:
+    row = await database.fetch_one(
+        "SELECT context_json FROM loan_requests WHERE id = ?", (loan_id,)
+    )
+    if row is None:
+        return {}
+    context = json.loads(row["context_json"] or "{}")
+    return {key: context.get(key) for key in _STATE_KEYS if key in context}
+
+
+async def _save_state(database: DatabasePort, loan_id: str, state: dict | None) -> None:
+    if not state:
+        return
+    row = await database.fetch_one(
+        "SELECT context_json FROM loan_requests WHERE id = ?", (loan_id,)
+    )
+    context = json.loads(row["context_json"] or "{}") if row else {}
+    for key in _STATE_KEYS:
+        if key in state:
+            context[key] = state[key]
+    await database.execute(
+        "UPDATE loan_requests SET context_json = ?, updated_at = ? WHERE id = ?",
+        (json.dumps(context, ensure_ascii=False), now_iso(), loan_id),
+    )
+
+
 @router.post("/greeting")
 async def greeting(
     payload: LoansGreetingRequest,
@@ -160,8 +196,9 @@ async def consult(
         loan_id = await _create_loan_request(database, user_id)
 
     history = await _history(database, loan_id)
+    state = await _load_state(database, loan_id)
     result = await loans.consult(
-        user_id=user_id, text=text, loan_request_id=loan_id, history=history
+        user_id=user_id, text=text, loan_request_id=loan_id, history=history, state=state
     )
     if result.get("status") == "ok":
         await _append_turns(
@@ -172,6 +209,7 @@ async def consult(
                 {"role": "assistant", "text": result.get("response_text", "")},
             ],
         )
+        await _save_state(database, loan_id, result.get("state"))
         if result.get("terminal_response"):
             await database.execute(
                 "UPDATE loan_requests SET status = 'terminal', updated_at = ? WHERE id = ?",

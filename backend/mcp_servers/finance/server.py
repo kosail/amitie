@@ -193,10 +193,14 @@ def build_finance_server(database: DatabasePort, settings: Any | None = None) ->
         return await service.accept_offer(database, user_id, offer)
 
     @server.tool()
-    async def compute_loan_offer(user_id: str, requested_amount: float = 0.0) -> dict[str, Any]:
-        """Deterministic loan offer: backend-proposed amount, terms, IRR-based CAT,
-        per-month schedule and the risk panel (DTI, surplus, buffer, relative cost,
-        income stability, savings-goal impact, payment-history projection, warnings)."""
+    async def compute_loan_offer(
+        user_id: str, requested_amount: float = 0.0, requested_term: int = 0
+    ) -> dict[str, Any]:
+        """Deterministic loan offer: backend-proposed amount, amount-banded plazo
+        options, IRR-based CAT, per-month schedule and the risk panel (DTI, surplus,
+        buffer, relative cost, income stability, savings-goal impact, payment-history
+        projection, warnings). Pass `requested_term` (months) to present the offer at
+        a plazo the user asked for."""
         return {
             "offer": await service.compute_loan_offer(
                 database,
@@ -204,6 +208,7 @@ def build_finance_server(database: DatabasePort, settings: Any | None = None) ->
                 requested_amount=requested_amount or None,
                 apr=settings.loan_default_apr,
                 term_months=settings.loan_default_term_months,
+                requested_term=requested_term or None,
                 opening_fee_pct=settings.loan_opening_fee_pct,
                 insurance_fee_pct=settings.loan_insurance_fee_pct,
                 dti_cap=settings.loan_dti_cap,
@@ -232,7 +237,7 @@ def build_finance_server(database: DatabasePort, settings: Any | None = None) ->
             user_id,
             amount=amount,
             apr=settings.loan_default_apr,
-            term_months=term_months or settings.loan_default_term_months,
+            term_months=term_months,
             loan_request_id=loan_request_id or None,
         )
 

@@ -210,15 +210,19 @@ The system prompt is assembled from:
 6. **Insight mandate (anti-generic):** must include `ScenarioComparison` with the
    offered loan's **payment-term (plazo) options** from `offer.options`
    (label "N meses", `monthlyPayment`, `payoffMonths` = months, `totalInterest`;
-   highlight the `recommended` term). `recommend_term` picks that term per
-   applicant from profile/behavior/amount (never a fixed 24), and the offer's own
-   `termMonths`/payment/CAT are presented at it. The backend deterministically
-   overwrites the model's scenario values with the engine options, so debt-payoff
-   scenarios from `analyze_loans` are never shown in the loans terminal. Must also
-   name the first credit to attack (creditor + APR), propose one concrete action
-   with amount + measured effect, and mention subscription leak / quincena
-   pressure when relevant. Cite the user's real numbers; generic advice and
-   invented figures are forbidden.
+   highlight the selected term). The candidate plazos are **amount-banded**
+   (`allowed_terms_for`: a small loan only offers short terms) and always include
+   the selected term and any term the user asked for. The selected term is the
+   user's requested term when they gave one (after a deterministic confirmation
+   turn with its real implications — see below), otherwise `recommend_term`'s
+   per-applicant pick (profile/behavior/amount, never a fixed 24). The offer's own
+   `termMonths`/payment/CAT are presented at the selected plazo. The backend
+   deterministically overwrites the model's scenario values with the engine
+   options, so debt-payoff scenarios from `analyze_loans` are never shown in the
+   loans terminal. Must also name the first credit to attack (creditor + APR),
+   propose one concrete action with amount + measured effect, and mention
+   subscription leak / quincena pressure when relevant. Cite the user's real
+   numbers; generic advice and invented figures are forbidden.
 7. **Rich-UI rule:** a terminal UI includes a payment forecast (`ForecastChart`/
    `LineChart`), a payment schedule (`PlanTable`), `BreakAlert` when the analysis
    detects a break, and key metrics (`ProgressBar`/`Badge`).
@@ -248,12 +252,44 @@ running conversation text.
   prompt and set `response_format={"type":"json_object"}` (already the adapter's
   behavior when `response_schema` is provided).
 - Parse defensively: accept raw JSON or fenced ```` ```json ````blocks. There is a
-  **single** attempt bounded by `LOANS_LLM_DEADLINE_SECONDS` and
+  **single** attempt bounded by `LOANS_LLM_DEADLINE_SECONDS` (and
+  `LOANS_INTAKE_DEADLINE_SECONDS` for the short intake turn) plus
   `LOANS_MAX_TOKENS`; on timeout, provider failure, invalid output, or a
-  low-confidence terminal, `agent/loans_fallback.py` returns a deterministic,
-  schema-valid terminal so the consult stays within the 5 s budget.
+  low-confidence terminal, `agent/loans_fallback.py` returns a deterministic
+  response. The server budget plus local TTS stays under the frontend's 12 s client
+  abort. The prompt omits the long per-month `schedule` (the model binds
+  `/loan/schedule`), trims the analysis payload, and caps the history to keep the
+  latency down.
 
-### 5.4 Confidence gate & persistence
+### 5.4 Intake phase and persisted negotiation state
+
+The consult does **not** offer until it knows the amount (or the user explicitly
+asks for the maximum). `consult` persists `requested_amount`, `purpose`, `use_max`,
+`requested_term`, `term_confirmed`, `purpose_asked` in
+`loan_requests.context_json` (read/written by `api/routers/loans.py`) so the
+requested amount survives across turns — otherwise a later turn without an amount
+would resolve to the engine maximum.
+
+```
+effective_amount = _extract_amount(text) or state.requested_amount
+use_max          = state.use_max or _wants_max(text)
+has_amount       = effective_amount is not None or use_max
+if not has_amount:                 # intake turn
+    ask naturally for the amount and/or purpose; terminal_response = null; no offer
+elif requested_term and not confirmed:
+    confirm the term (and ask purpose if still unknown); terminal_response = null
+elif purpose unknown and not asked:
+    ask the purpose once; terminal_response = null
+else:
+    build the offer at effective_amount and run the structured LLM turn
+```
+
+Unlike the offer, an intake turn **may** be produced by the model (a natural
+question) with a deterministic fallback (`loans_fallback.intake_response`) if the
+provider fails. Phrases like "el máximo" / "lo que me puedas dar" count as a
+request for the engine maximum.
+
+### 5.5 Confidence gate & persistence
 
 ```
 if terminal_response is not null and confidence > 0.80:
@@ -305,7 +341,16 @@ the user's own liabilities/transactions/subscriptions:
   extra payments and a **recommended** extra (the user's surplus, or their
   subscription leak when there is no surplus). These are debt-payoff scenarios for
   the La Mesa / El Revés flows; the **loans terminal** uses the offer's `options`
-  (loan payment terms) instead.
+  (loan payment terms) instead, shaped by `allowed_terms_for(amount)` and carrying
+  the selected/requested term.
+
+A **user-stated plazo** is extracted (`_extract_term`), stored in the loan
+conversation state (`loan_requests.context_json`: `requested_term`,
+`term_confirmed`) and honored. Until confirmed, the service returns a
+deterministic confirmation turn (`terminal_response = null`) that states the real
+implications (monthly payment, share of income, total interest, comparison to the
+recommendation; if unaffordable, that it exceeds capacity) and asks to confirm;
+`create_loan` then creates at that term.
 - **payoffOrder** (per-creditor clear month under the chosen plan);
 - **highCost** (credits ranked by APR);
 - **behavior** (subscription load + share of income, expense volatility, average

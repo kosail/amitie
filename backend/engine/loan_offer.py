@@ -202,6 +202,23 @@ def terms_for(
 
 
 TERM_CANDIDATES = (6, 12, 24, 36, 48)
+MIN_TERM = 6
+MAX_TERM = 48
+
+# Small loans should not be stretched over long plazos. (ceiling, allowed terms)
+AMOUNT_TERM_BANDS: tuple[tuple[float, tuple[int, ...]], ...] = (
+    (15_000.0, (6, 12)),
+    (50_000.0, (6, 12, 24)),
+    (100_000.0, (12, 24, 36)),
+)
+
+
+def allowed_terms_for(amount: float) -> list[int]:
+    """The plazos that make sense for this amount (small loans stay short)."""
+    for ceiling, terms in AMOUNT_TERM_BANDS:
+        if amount < ceiling:
+            return list(terms)
+    return [12, 24, 36, 48]
 
 
 def term_options(
@@ -211,18 +228,21 @@ def term_options(
     opening_fee_pct: float = DEFAULT_OPENING_FEE_PCT,
     insurance_fee_pct: float = DEFAULT_INSURANCE_FEE_PCT,
     recommended_months: int | None = None,
+    requested_term: int | None = None,
 ) -> list[dict[str, Any]]:
     """Deterministic plazo options for a fixed principal (loan-term comparison).
 
-    Every option is computed by `terms_for`, so the LLM never invents a payment
-    or an interest total (INV-015). The chosen term is flagged `recommended` by
-    `recommend_term`, which reads the applicant's profile and behavior.
+    The candidate set is amount-banded (`allowed_terms_for`), always keeping the
+    offered/recommended term and any term the user explicitly asked for within
+    the product range. Every option is computed by `terms_for` (INV-015).
     """
     if amount <= 0:
         return []
-    months_set = {*TERM_CANDIDATES}
+    months_set = set(allowed_terms_for(amount))
     if recommended_months:
         months_set.add(int(recommended_months))
+    if requested_term and MIN_TERM <= int(requested_term) <= MAX_TERM:
+        months_set.add(int(requested_term))
     options: list[dict[str, Any]] = []
     for months in sorted(months_set):
         terms = terms_for(
@@ -241,6 +261,7 @@ def term_options(
                 "totalCost": terms["totalCost"],
                 "cat": terms["cat"],
                 "recommended": recommended_months is not None and months == int(recommended_months),
+                "requested": requested_term is not None and months == int(requested_term),
             }
         )
     return options
@@ -354,6 +375,7 @@ def propose_offer(
     requested_amount: float | None = None,
     apr: float = DEFAULT_APR,
     term_months: int = DEFAULT_TERM_MONTHS,
+    requested_term: int | None = None,
     opening_fee_pct: float = DEFAULT_OPENING_FEE_PCT,
     insurance_fee_pct: float = DEFAULT_INSURANCE_FEE_PCT,
     dti_cap: float = DEFAULT_DTI_CAP,
@@ -416,6 +438,7 @@ def propose_offer(
         apr=apr,
         opening_fee_pct=opening_fee_pct,
         insurance_fee_pct=insurance_fee_pct,
+        requested_term=requested_term,
     )
     recommendation = recommend_term(
         options,
@@ -424,15 +447,26 @@ def propose_offer(
         max_payment=max_payment,
         signals=signals,
     )
-    recommended_months = recommendation["months"] if amount > 0 else term_months
+    engine_months = recommendation["months"] if amount > 0 else term_months
+    requested_valid = (
+        int(requested_term)
+        if requested_term and any(option["months"] == int(requested_term) for option in options)
+        else None
+    )
+    selected_months = requested_valid or engine_months
     for option in options:
-        option["recommended"] = option["months"] == recommended_months
+        option["recommended"] = option["months"] == selected_months
+        option["requested"] = requested_valid is not None and option["months"] == requested_valid
         if option["recommended"]:
-            option["reason"] = recommendation["reason"]
+            option["reason"] = (
+                recommendation["reason"]
+                if selected_months == engine_months
+                else "es el plazo que pediste"
+            )
 
-    # The offer itself is presented at the recommended plazo so the headline
-    # (LoanOffer) and the highlighted comparison card agree.
-    term_months = recommended_months
+    # The offer is presented at the selected plazo: the term the user asked for
+    # when they gave one, otherwise the engine recommendation.
+    term_months = selected_months
     payment = round(_payment(amount, apr, term_months), 2) if amount > 0 else 0.0
     schedule = _schedule(amount, apr, term_months) if amount > 0 else []
     opening_fee = round(amount * opening_fee_pct, 2)
@@ -481,11 +515,23 @@ def propose_offer(
         "schedule": schedule,
         "options": options,
         "recommendation": {
-            **recommendation,
+            "months": selected_months,
+            "engineRecommended": engine_months,
+            "requested": requested_valid,
+            "reason": recommendation["reason"],
+            "risk": recommendation["risk"],
             "text": (
-                f"Recomendamos {recommendation['months']} meses"
+                f"Recomendamos {engine_months} meses"
                 + (f": {recommendation['reason']}." if recommendation.get("reason") else ".")
+                if selected_months == engine_months
+                else f"Elegiste {selected_months} meses."
             ),
+        },
+        "capacity": {
+            "income": _r(income),
+            "minPayment": min_payment,
+            "maxPayment": _r(max_payment),
+            "dtiCap": dti_cap,
         },
         "risk": {
             "dti": {"existing": _r(min_payment / income) if income else None, "withOffer": dti_with, "cap": dti_cap, "flag": bool(dti_with and dti_with > dti_cap)},

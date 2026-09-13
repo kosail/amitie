@@ -134,13 +134,17 @@ props are literals or `{"path": ...}` bindings before validation (`REQ-LM-13`).
 In a **loans terminal**, `ScenarioComparison.scenarios` carries the offered loan's
 **payment-term (plazo) options** (`label` = "N meses", `payoffMonths` = term
 months, `monthlyPayment`, `totalInterest`), computed by `engine/loan_offer.py`
-(`term_options`, 6/12/24/36/48). The term marked `recommended` (passed as
-`highlightIndex`) is derived per applicant by `recommend_term` from the profile,
-payment likelihood/behavior and requested amount — never a fixed term — and the
-recommended scenario may carry an optional `note` with the plain-language reason.
-The offer itself (`LoanOffer.termMonths` and its payment/interest/CAT/schedule) is
-presented at the recommended plazo. Debt-payoff scenarios (`analyze_loans`) remain
-in the La Mesa / El Revés flows, not in the loans terminal.
+(`term_options`). The candidate set is **amount-banded** (`allowed_terms_for`: a
+small loan only offers short plazos), always including the selected term and any
+term the user explicitly asked for. The selected term (passed as `highlightIndex`)
+is the user's requested term when they gave one, otherwise `recommend_term`'s
+per-applicant pick (profile, payment likelihood/behavior, requested amount) —
+never a fixed term — and the selected scenario may carry `requested: true` and an
+optional `note` with the plain-language reason. The offer itself
+(`LoanOffer.termMonths` and its payment/interest/CAT/schedule) is presented at the
+selected plazo. A user-stated term is confirmed (with its real implications)
+before the terminal is offered. Debt-payoff scenarios (`analyze_loans`) remain in
+the La Mesa / El Revés flows, not in the loans terminal.
 
 Everything else in §6 is reserved for later milestones and must not be emitted until the frontend confirms support. Adding components is additive (see §10), so the catalog ID remains `amitie.standard.v1`.
 

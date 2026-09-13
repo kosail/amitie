@@ -122,6 +122,7 @@ def create_app(
             toolbox=toolbox,
             tracer=tracer,
             deadline_seconds=resolved.loans_llm_deadline_seconds,
+            intake_deadline_seconds=resolved.loans_intake_deadline_seconds,
             max_tokens=resolved.loans_max_tokens,
         )
         app.state.settings = resolved

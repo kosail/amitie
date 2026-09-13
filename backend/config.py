@@ -96,11 +96,17 @@ class Settings:
     loan_insurance_fee_pct: float = 0.01
     loan_dti_cap: float = 0.35
     # Loans consult latency budget: the LLM call is hard-capped and falls back
-    # to a deterministic engine-built terminal so a consult never exceeds ~5s.
-    loans_llm_deadline_seconds: float = 4.0
-    loans_max_tokens: int = 900
+    # to a deterministic engine-built terminal so a consult never exceeds the
+    # client budget (the frontend aborts at 12s). Intake turns (short clarifying
+    # questions) use a shorter cap so they feel snappy.
+    loans_llm_deadline_seconds: float = 6.5
+    loans_intake_deadline_seconds: float = 3.5
+    loans_max_tokens: int = 1500
 
-    agent_max_model_calls: int = 10
+    # Per-turn ADK function-calling budget: the La Mesa flow needs ~6 LLM calls
+    # (context + analysis + audience + simulate + persist, plus a closing text
+    # turn), so the cap must leave headroom above that.
+    agent_max_model_calls: int = 12
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -142,7 +148,8 @@ class Settings:
             loan_opening_fee_pct=_as_float("LOAN_OPENING_FEE_PCT", "0.02"),
             loan_insurance_fee_pct=_as_float("LOAN_INSURANCE_FEE_PCT", "0.01"),
             loan_dti_cap=_as_float("LOAN_DTI_CAP", "0.35"),
-            loans_llm_deadline_seconds=_as_float("LOANS_LLM_DEADLINE_SECONDS", "4.0"),
-            loans_max_tokens=_as_int("LOANS_MAX_TOKENS", "900"),
-            agent_max_model_calls=_as_int("AGENT_MAX_MODEL_CALLS", "10"),
+            loans_llm_deadline_seconds=_as_float("LOANS_LLM_DEADLINE_SECONDS", "6.5"),
+            loans_intake_deadline_seconds=_as_float("LOANS_INTAKE_DEADLINE_SECONDS", "3.5"),
+            loans_max_tokens=_as_int("LOANS_MAX_TOKENS", "1500"),
+            agent_max_model_calls=_as_int("AGENT_MAX_MODEL_CALLS", "12"),
         )

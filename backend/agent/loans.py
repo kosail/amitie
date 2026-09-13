@@ -12,7 +12,7 @@ import asyncio
 import json
 import re
 import time
-from typing import Any
+from typing import Any, Mapping
 
 from mcp_servers.toolbox import Toolbox
 from providers.base import ChatMessage, LLMProvider, ProviderError
@@ -124,6 +124,214 @@ def _extract_amount(text: str) -> float | None:
     return best
 
 
+class _Term:
+    MIN = 6
+    MAX = 48
+
+
+_WORD_YEARS = {"un": 1, "una": 1, "uno": 1, "dos": 2, "tres": 3, "cuatro": 4, "cinco": 5}
+_AFFIRMATIVE = (
+    "si",
+    "claro",
+    "confirmo",
+    "confirmado",
+    "correcto",
+    "de acuerdo",
+    "adelante",
+    "esta bien",
+    "ok",
+    "okay",
+    "va",
+    "acepto",
+    "hagamoslo",
+)
+_NEGATIVE = ("no", "mejor no", "otro plazo", "cambiar", "cambia", "cambiale", "espera", "no quiero")
+
+
+def _strip_accents(text: str) -> str:
+    import unicodedata
+
+    return "".join(
+        char for char in unicodedata.normalize("NFD", text) if unicodedata.category(char) != "Mn"
+    )
+
+
+def _extract_term(text: str) -> int | None:
+    """Deterministic requested term in months from the user's message (6–48)."""
+    if not text:
+        return None
+    lowered = _strip_accents(text.lower())
+    if re.search(r"\banos?\s+y\s+medio\b", lowered):
+        return 18
+    month_match = re.search(r"(\d+)\s*mes(?:es)?\b", lowered)
+    if month_match:
+        months = int(month_match.group(1))
+        return months if _Term.MIN <= months <= _Term.MAX else None
+    year_match = re.search(r"(\d+)\s*anos?\b", lowered)
+    if year_match:
+        months = int(year_match.group(1)) * 12
+        return months if _Term.MIN <= months <= _Term.MAX else None
+    for word, value in _WORD_YEARS.items():
+        if re.search(rf"\b{word}\s+anos?\b", lowered):
+            months = value * 12
+            return months if _Term.MIN <= months <= _Term.MAX else None
+    return None
+
+
+def _matches_any(text: str, phrases: tuple[str, ...]) -> bool:
+    if not text:
+        return False
+    lowered = _strip_accents(text.lower())
+    return any(
+        re.search(rf"\b{re.escape(_strip_accents(phrase))}\b", lowered) for phrase in phrases
+    )
+
+
+def _is_affirmative(text: str) -> bool:
+    return _matches_any(text, _AFFIRMATIVE)
+
+
+def _is_negative(text: str) -> bool:
+    return _matches_any(text, _NEGATIVE)
+
+
+def _money(value: Any) -> str:
+    try:
+        return f"${float(value):,.0f}"
+    except (TypeError, ValueError):
+        return "$0"
+
+
+# The user explicitly asking for the ceiling lets us offer the engine maximum.
+_MAX_INTENT = (
+    "el maximo",
+    "lo maximo",
+    "la cantidad maxima",
+    "el monto maximo",
+    "lo mas que puedas",
+    "lo mas que me puedas",
+    "lo que me puedas dar",
+    "lo que me puedas prestar",
+    "lo que me ofrezcas",
+    "lo que sea posible",
+    "tu dime",
+    "lo que consideres",
+    "tu sabras",
+)
+
+_PURPOSE_PATTERNS = (
+    r"para ([^.,;!?]{3,60})",
+    r"usarl[oa] para ([^.,;!?]{3,60})",
+)
+_PURPOSE_STOPWORDS = {"que", "quien", "cuando", "donde", "como", "cual", "cuanto"}
+_PURPOSE_PRONOUNS = {"mi", "ti", "si", "esto", "eso"}
+
+
+def _wants_max(text: str) -> bool:
+    return _matches_any(text, _MAX_INTENT)
+
+
+def _extract_purpose(text: str) -> str | None:
+    """Best-effort purpose from "para ..." phrasing; the answer stays conversational."""
+    if not text:
+        return None
+    lowered = _strip_accents(text.lower())
+    for pattern in _PURPOSE_PATTERNS:
+        match = re.search(pattern, lowered)
+        if not match:
+            continue
+        phrase = match.group(1).strip()
+        if phrase and phrase.split()[0] not in _PURPOSE_STOPWORDS and phrase not in _PURPOSE_PRONOUNS:
+            return phrase
+    return None
+
+
+# Prompt-size trims (latency): only what the mandates actually use, and no long
+# per-month schedule (the model binds `/loan/schedule` instead).
+_ANALYSIS_KEYS = ("nextBestAction", "behavior", "quincena", "highCost")
+_HISTORY_LIMIT = 8
+
+
+def _trimmed_analysis(analysis: Any) -> dict[str, Any]:
+    payload = (analysis or {}).get("analysis") if isinstance(analysis, Mapping) else None
+    if not isinstance(payload, Mapping):
+        return {}
+    return {key: payload[key] for key in _ANALYSIS_KEYS if payload.get(key) is not None}
+
+
+def _offer_for_prompt(offer: Any) -> Any:
+    """Recursively drop the long per-month schedule; the model binds /loan/schedule."""
+
+    def trim(value: Any) -> Any:
+        if isinstance(value, Mapping):
+            result: dict[str, Any] = {}
+            for key, item in value.items():
+                if key == "schedule" and isinstance(item, list):
+                    result[key] = f"({len(item)} cuotas; usa el binding /loan/schedule)"
+                else:
+                    result[key] = trim(item)
+            return result
+        if isinstance(value, list):
+            return [trim(item) for item in value]
+        return value
+
+    return trim(offer) if isinstance(offer, Mapping) else offer
+
+
+def _recent_history(history: Any, limit: int = _HISTORY_LIMIT) -> list[Any]:
+    return list(history or [])[-limit:]
+
+
+def _confirmation_text(offer: Mapping[str, Any], requested_term: int, name: str | None) -> str:
+    """Explain the real implications of the user's chosen term and ask to confirm."""
+    options = {
+        int(option["months"]): option
+        for option in (offer.get("options") or [])
+        if isinstance(option, Mapping) and option.get("months")
+    }
+    requested = options.get(requested_term)
+    if requested is None:
+        return (
+            f"El plazo mínimo es {_Term.MIN} meses y el máximo {_Term.MAX}. "
+            f"¿Qué plazo prefieres?"
+        )
+    engine_months = int(
+        (offer.get("recommendation") or {}).get("engineRecommended")
+        or (offer.get("recommendation") or {}).get("months")
+        or requested_term
+    )
+    recommended = options.get(engine_months)
+    capacity = offer.get("capacity") or {}
+    income = float(capacity.get("income") or 0.0)
+    max_payment = float(capacity.get("maxPayment") or 0.0)
+    payment = float(requested.get("monthlyPayment") or 0.0)
+    interest = float(requested.get("totalInterest") or 0.0)
+    prefix = f"{name}, " if name else ""
+    parts = [f"{prefix}entiendo que quieres tu crédito a {requested_term} meses."]
+    if income > 0:
+        parts.append(
+            f"Tu pago mensual sería {_money(payment)} ({payment / income * 100:.0f}% de tu ingreso) "
+            f"y pagarías {_money(interest)} de intereses en total."
+        )
+    else:
+        parts.append(
+            f"Tu pago mensual sería {_money(payment)} y pagarías {_money(interest)} de intereses."
+        )
+    if recommended is not None and engine_months != requested_term:
+        parts.append(
+            f"A {engine_months} meses tu pago sería {_money(recommended.get('monthlyPayment'))} "
+            f"e intereses {_money(recommended.get('totalInterest'))}."
+        )
+    if max_payment > 0 and payment > max_payment + 0.5:
+        parts.append(
+            f"Ese pago supera tu capacidad de pago (~{_money(max_payment)}), así que no sería prudente."
+        )
+        parts.append(f"¿Prefieres {engine_months} meses o ajustamos el monto?")
+    else:
+        parts.append(f"¿Confirmas que quieres {requested_term} meses? Responde \"sí\" para continuar.")
+    return " ".join(parts)
+
+
 def _lookup_pointer(model: Any, path: str) -> Any:
     node = model
     for part in path.strip("/").split("/"):
@@ -201,43 +409,69 @@ class LoansConsultService:
         provider: LLMProvider,
         toolbox: Toolbox,
         tracer: Any | None = None,
-        deadline_seconds: float = 4.0,
-        max_tokens: int = 900,
+        deadline_seconds: float = 6.5,
+        intake_deadline_seconds: float = 3.5,
+        max_tokens: int = 1500,
     ) -> None:
         self._provider = provider
         self._toolbox = toolbox
         self._tracer = tracer
         self._deadline_seconds = deadline_seconds
+        self._intake_deadline_seconds = intake_deadline_seconds
         self._max_tokens = max_tokens
 
-    def _system_prompt(self, audience: dict[str, Any] | None = None) -> str:
+    def _system_prompt(self, audience: dict[str, Any] | None = None, *, intake: bool = False) -> str:
         bank = load_bank_context()
+        role = (
+            "Eres Luna, una asesora de crédito para usuarios en México. Hablas en español (es-MX). "
+            "Tu nombre es Luna. Eres femenina; si te presentas o te refieres a ti misma usa el "
+            "femenino (p. ej. \"soy tu asesora\"). No digas tu nombre salvo que sea necesario."
+        )
+        if intake:
+            return "\n".join(
+                [
+                    role,
+                    "",
+                    "CONTEXTO DEL BANCO:",
+                    bank or "(sin contexto bancario configurado; responde de forma conservadora)",
+                    "",
+                    "ESTÁS EN CONVERSACIÓN, AÚN SIN OFERTA: al usuario todavía le falta dar el monto "
+                    "y/o el propósito. Responde de forma natural y breve (una o dos frases): reconoce lo "
+                    "que ya dijo, no repitas la bienvenida, y pregunta con calidez solo lo que falte. NO "
+                    "generes una oferta, NO calcules cifras y devuelve terminal_response = null. El "
+                    "monto mínimo del producto es 5,000 MXN.",
+                    "",
+                    "Responde ÚNICAMENTE con un objeto JSON: "
+                    '{"response_text": "texto para hablar", "confidence": 0.0, "terminal_response": null}',
+                ]
+            )
         level = str((audience or {}).get("level") or "standard")
         directive = str((audience or {}).get("directive") or "")
         allowed = ", ".join(_LOANS_COMPONENTS)
         lines = [
-            "Eres Luna, una asesora de crédito para usuarios en México. Hablas en español (es-MX). "
-            "Tu nombre es Luna. Eres femenina; si te presentas o te refieres a ti misma usa el "
-            "femenino (p. ej. \"soy tu asesora\"). No digas tu nombre salvo que sea necesario.",
+            role,
             "Nunca calcules amortizaciones tú mismo. Si necesitas más información, pregunta y "
             "devuelve terminal_response = null; solo genera terminal_response con confianza > 0.80.",
             "",
             "CONTEXTO DEL BANCO:",
             bank or "(sin contexto bancario configurado; responde de forma conservadora)",
             "",
-            "OFERTA DE CRÉDITO (obligatoria en terminal_response): recibirás una 'OFERTA DETERMINISTA' "
-            "del motor. La interfaz DEBE incluir LoanOffer con amount, apr, months, monthlyPayment, "
-            "totalInterest, totalCost, cat, schedule y action 'request_loan'. Enlaza los números con "
-            "bindings a /loan (p. ej. {\"path\": \"/loan/amount\"}, {\"path\": \"/loan/monthlyPayment\"}); "
-            "el backend ya colocó los valores en data_model bajo 'loan'. NUNCA inventes montos, tasas ni "
-            "pagos. El MONTO siempre debe aparecer.",
-            "OPCIONES DE PLAZO: la oferta incluye `options` (6/12/24/36/48 meses), cada una con su pago "
-            "mensual e interés total del motor, y una `recommendation` con el plazo sugerido y su razón. "
-            "Para ScenarioComparison usa SOLO esas opciones (label \"N meses\", monthlyPayment, "
+            "OFERTA DE CRÉDITO: el motor ya calculó una 'OFERTA DETERMINISTA' porque el usuario ya dio "
+            "un monto (o pidió el máximo). La interfaz DEBE incluir LoanOffer con amount, apr, months, "
+            "monthlyPayment, totalInterest, totalCost, cat, schedule y action 'request_loan'. Enlaza los "
+            "números con bindings a /loan (p. ej. {\"path\": \"/loan/amount\"}); el backend ya colocó los "
+            "valores en data_model bajo 'loan'. NUNCA inventes montos, tasas ni pagos.",
+            "OPCIONES DE PLAZO: la oferta incluye `options` (plazos acordes al monto, no siempre los "
+            "mismos; p. ej. montos pequeños usan plazos cortos), cada una con su pago mensual e interés "
+            "total del motor, y una `recommendation` con el plazo elegido (`months`) y su razón. Para "
+            "ScenarioComparison usa SOLO esas opciones (label \"N meses\", monthlyPayment, "
             "payoffMonths = meses, totalInterest) y resalta la que trae recommended=true. Menciona en "
-            "response_text por qué recomiendas ese plazo (usa `recommendation.reason`). El backend "
-            "sobreescribe estos valores con el motor; no uses los escenarios de deuda del análisis para "
-            "las opciones de plazo.",
+            "response_text por qué se eligió ese plazo (usa `recommendation.reason` o, si el usuario lo "
+            "pidió, reconócelo). El backend sobreescribe estos valores con el motor; no uses los "
+            "escenarios de deuda del análisis para las opciones de plazo.",
+            "CONSISTENCIA: toma en cuenta los mensajes previos y el estado de la conversación. Si el "
+            "usuario pidió un plazo específico, respétalo: la oferta ya viene a ESE plazo "
+            "(`offer.termMonths` / `recommendation.months`); nunca lo cambies ni lo ignores.",
             "",
             "FORMAS OBLIGATORIAS:",
             "- action SIEMPRE es un objeto: {\"event\": {\"name\": \"request_loan\", \"context\": {}}}, "
@@ -249,6 +483,12 @@ class LoansConsultService:
         ]
         if directive:
             lines += ["ADAPTACIÓN DE AUDIENCIA (obligatoria): " + directive, ""]
+        lines += [
+            "SI AÚN NO HAY MONTO (ni el usuario pidió el máximo), NO generes terminal_response: pregunta "
+            "con naturalidad cuánto necesita y para qué, y devuelve null. Lo siguiente aplica solo cuando "
+            "ya tengas el monto:",
+            "",
+        ]
         if level == "simple":
             lines += [
                 "MANDATO (audiencia simple): incluye LoanOffer y, como comparación de plazos, "
@@ -319,6 +559,58 @@ class LoansConsultService:
             "terminal_response": None,
         }
 
+    async def _intake_response(
+        self,
+        *,
+        text: str,
+        history: Any,
+        audience: Any,
+        credit_history: Any,
+        state: Mapping[str, Any],
+        need_amount: bool,
+        need_purpose: bool,
+        name: str,
+    ) -> tuple[str, str | None]:
+        """A natural clarifying turn; deterministic question if the model fails."""
+        fallback = loans_fallback.intake_response(
+            name=name or None, need_amount=need_amount, need_purpose=need_purpose
+        )
+        try:
+            generated = await asyncio.wait_for(
+                self._provider.generate(
+                    [
+                        ChatMessage(role="system", content=self._system_prompt(audience, intake=True)),
+                        ChatMessage(
+                            role="user",
+                            content=(
+                                "Estado de la conversación:\n"
+                                + json.dumps(dict(state), ensure_ascii=False)
+                                + "\n\nDatos del usuario (JSON):\n"
+                                + json.dumps(_compact_credit_history(credit_history), ensure_ascii=False)
+                                + "\n\nConversación previa:\n"
+                                + json.dumps(_recent_history(history), ensure_ascii=False)
+                                + f"\n\nMensaje del usuario: {text}"
+                                + ("\n\nFalta el MONTO (pídelo)." if need_amount else "")
+                                + ("\nFalta el PROPÓSITO (pídelo)." if need_purpose else "")
+                                + "\nPregunta con naturalidad lo que falte y devuelve terminal_response = null."
+                            ),
+                        ),
+                    ],
+                    response_schema=LOANS_SCHEMA,
+                    max_tokens=300,
+                ),
+                timeout=self._intake_deadline_seconds,
+            )
+            parsed = _parse_json(generated.text)
+            candidate = str(parsed.get("response_text") or "").strip()
+            if candidate:
+                return candidate, None
+            return fallback, "empty_intake"
+        except (ProviderError, asyncio.TimeoutError, TimeoutError) as exc:
+            return fallback, f"intake_{type(exc).__name__}"
+        except Exception as exc:
+            return fallback, f"intake_{type(exc).__name__}"
+
     async def consult(
         self,
         *,
@@ -326,17 +618,141 @@ class LoansConsultService:
         text: str,
         loan_request_id: str,
         history: list[dict[str, str]] | None = None,
+        state: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         logger.info("loans_consult_started", user_id=user_id, loan_request_id=loan_request_id)
         started = time.perf_counter()
+
+        # Conversation state keeps the negotiation consistent across turns: the term
+        # the user chose, the amount they asked for, and the purpose. Without a
+        # persisted amount every later turn would recompute the maximum offer.
+        state = dict(state or {})
+        requested_term = int(state["requested_term"]) if state.get("requested_term") else None
+        confirmed = bool(state.get("term_confirmed"))
+        requested_amount = float(state["requested_amount"]) if state.get("requested_amount") else None
+        purpose = state.get("purpose") or None
+        use_max = bool(state.get("use_max"))
+        purpose_asked = bool(state.get("purpose_asked"))
+
+        new_term = _extract_term(text)
+        if new_term:
+            requested_term = new_term
+            confirmed = False
+        elif requested_term and _is_negative(text):
+            requested_term = None
+            confirmed = False
+        elif requested_term and _is_affirmative(text):
+            confirmed = True
+
+        amount_in_text = _extract_amount(text)
+        if amount_in_text:
+            requested_amount = amount_in_text
+        if _wants_max(text):
+            use_max = True
+        purpose_in_text = _extract_purpose(text)
+        if purpose_in_text:
+            purpose = purpose_in_text
+
+        has_amount = requested_amount is not None or use_max
+        state.update(
+            {
+                "requested_amount": requested_amount,
+                "purpose": purpose,
+                "use_max": use_max,
+                "requested_term": requested_term,
+                "term_confirmed": confirmed,
+                "purpose_asked": purpose_asked,
+            }
+        )
+
         context = await self._toolbox.call("get_credit_history", {"user_id": user_id})
-        analysis = await self._toolbox.call("analyze_loans", {"user_id": user_id})
         audience_result = await self._toolbox.call("get_audience", {"user_id": user_id})
         audience = audience_result.get("audience") if isinstance(audience_result, dict) else None
-        requested_amount = _extract_amount(text)
+        credit_history = context.get("creditHistory", {}) or {}
+        profile = credit_history.get("profile") if isinstance(credit_history, dict) else None
+        name = str((profile or {}).get("name") or "").strip().split(" ")[0] if isinstance(profile, Mapping) else ""
+
+        async def _intake(need_amount: bool, need_purpose: bool) -> dict[str, Any]:
+            state["purpose_asked"] = True
+            response_text, intake_error = await self._intake_response(
+                text=text,
+                history=history,
+                audience=audience,
+                credit_history=credit_history,
+                state=state,
+                need_amount=need_amount,
+                need_purpose=need_purpose,
+                name=name,
+            )
+            audio = await self._synthesize(response_text, user_id)
+            await self._trace(started, error=intake_error)
+            logger.info(
+                "loans_intake_turn",
+                user_id=user_id,
+                loan_request_id=loan_request_id,
+                need_amount=need_amount,
+                need_purpose=need_purpose,
+                used_deterministic=bool(intake_error),
+            )
+            return {
+                "status": "ok",
+                "loan_request_id": loan_request_id,
+                "response_text": response_text,
+                "confidence": 1.0,
+                "audio_id": (audio or {}).get("audio_id"),
+                "audio_ref": (audio or {}).get("audio_ref"),
+                "terminal_response": None,
+                "state": state,
+            }
+
+        need_purpose = purpose is None and not purpose_asked
+
+        # Intake: without an amount (and no explicit maximum) we cannot offer yet.
+        if not has_amount:
+            return await _intake(need_amount=True, need_purpose=need_purpose)
+
+        analysis = await self._toolbox.call("analyze_loans", {"user_id": user_id})
         offer = await self._toolbox.call(
-            "compute_loan_offer", {"user_id": user_id, "requested_amount": requested_amount or 0.0}
+            "compute_loan_offer",
+            {
+                "user_id": user_id,
+                "requested_amount": requested_amount or 0.0,
+                "requested_term": requested_term or 0,
+            },
         )
+
+        # The user asked for a specific term: never ignore it. Confirm it and
+        # explain the real implications before turning it into an offer. If the
+        # purpose is still unknown, ask it in the same turn.
+        if requested_term and not confirmed:
+            propose = offer.get("offer", offer) if isinstance(offer, Mapping) else {}
+            response_text = _confirmation_text(propose, requested_term, name or None)
+            if need_purpose:
+                response_text += " ¿Y para qué usarías el crédito?"
+                state["purpose_asked"] = True
+            audio = await self._synthesize(response_text, user_id)
+            await self._trace(started, error=None)
+            logger.info(
+                "loans_term_confirmation_requested",
+                user_id=user_id,
+                loan_request_id=loan_request_id,
+                requested_term=requested_term,
+            )
+            return {
+                "status": "ok",
+                "loan_request_id": loan_request_id,
+                "response_text": response_text,
+                "confidence": 1.0,
+                "audio_id": (audio or {}).get("audio_id"),
+                "audio_ref": (audio or {}).get("audio_ref"),
+                "terminal_response": None,
+                "state": state,
+            }
+
+        # Ask once for the purpose before offering.
+        if need_purpose:
+            return await _intake(need_amount=False, need_purpose=True)
+
         await self._toolbox.call(
             "store_loan_offer",
             {
@@ -345,8 +761,6 @@ class LoansConsultService:
                 "offer": offer.get("offer", offer),
             },
         )
-        credit_history = context.get("creditHistory", {}) or {}
-        profile = credit_history.get("profile") if isinstance(credit_history, dict) else None
         messages = [
             ChatMessage(role="system", content=self._system_prompt(audience)),
             ChatMessage(
@@ -357,12 +771,23 @@ class LoansConsultService:
                     + "\n\nAudiencia determinista (nivel e instrucciones de complejidad):\n"
                     + json.dumps(audience, ensure_ascii=False)
                     + "\n\nAnalisis determinista (cifras reales; úsalas, no las inventes):\n"
-                    + json.dumps(analysis.get("analysis", {}), ensure_ascii=False)
+                    + json.dumps(_trimmed_analysis(analysis), ensure_ascii=False)
                     + "\n\nOFERTA DETERMINISTA (amount, apr, months, monthlyPayment, totalInterest, "
-                    "cat, schedule y riesgo; úsala tal cual en LoanOffer):\n"
-                    + json.dumps(offer, ensure_ascii=False)
+                    "cat y riesgo; úsala tal cual en LoanOffer):\n"
+                    + json.dumps(_offer_for_prompt(offer), ensure_ascii=False)
+                    + "\n\nEstado de la conversación (monto, propósito y plazo):\n"
+                    + json.dumps(
+                        {
+                            "requested_amount": requested_amount,
+                            "purpose": purpose,
+                            "use_max": use_max,
+                            "requested_term": requested_term,
+                            "term_confirmed": confirmed,
+                        },
+                        ensure_ascii=False,
+                    )
                     + "\n\nConversación previa:\n"
-                    + json.dumps(history or [], ensure_ascii=False)
+                    + json.dumps(_recent_history(history), ensure_ascii=False)
                     + f"\n\nMensaje del usuario: {text}"
                 ),
             ),
@@ -395,11 +820,20 @@ class LoansConsultService:
             confidence = float(parsed.get("confidence") or 0.0)
             terminal = parsed.get("terminal_response")
 
-        # Deterministic safety net (≤5s SLA): timeout, provider error, invalid output,
-        # or a low-confidence terminal all fall back to an engine-built interface.
+        # Deterministic safety net: timeout, provider error, invalid output, or a
+        # low-confidence terminal fall back to an engine-built interface. This runs
+        # only once an amount is known (intake returned earlier), so the offer is
+        # the requested one, never an accidental maximum.
+        fallback_reason: str | None = None
         if parsed is None or (terminal is not None and confidence <= CONFIDENCE_THRESHOLD):
+            fallback_reason = error or ("low_confidence" if terminal is not None else "invalid_output")
             fallback = loans_fallback.build_terminal(
-                profile=profile, audience=audience, offer=offer, analysis=analysis
+                profile=profile,
+                audience=audience,
+                offer=offer,
+                analysis=analysis,
+                requested_amount=requested_amount,
+                use_max=use_max,
             )
             if not response_text:
                 response_text = str(fallback.get("response_text") or "")
@@ -408,6 +842,12 @@ class LoansConsultService:
                 confidence = 1.0
             elif parsed is None:
                 terminal = None
+            logger.info(
+                "loans_fallback_used",
+                user_id=user_id,
+                loan_request_id=loan_request_id,
+                reason=fallback_reason,
+            )
 
         if not response_text:
             response_text = "No pude generar la propuesta en este momento. Intenta de nuevo."
@@ -433,13 +873,14 @@ class LoansConsultService:
                 terminal_payload = persisted
 
         audio = await self._synthesize(response_text, user_id)
-        await self._trace(started, error=None)
+        await self._trace(started, error=error)
         logger.info(
             "loans_consult_completed",
             user_id=user_id,
             loan_request_id=loan_request_id,
             confidence=confidence,
             has_terminal_response=terminal_payload is not None,
+            fallback_reason=fallback_reason,
         )
         return {
             "status": "ok",
@@ -449,6 +890,7 @@ class LoansConsultService:
             "audio_id": (audio or {}).get("audio_id"),
             "audio_ref": (audio or {}).get("audio_ref"),
             "terminal_response": terminal_payload,
+            "state": state,
         }
 
     def _validate_terminal(

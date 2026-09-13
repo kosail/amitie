@@ -99,8 +99,9 @@ class LoanOfferTest(unittest.TestCase):
         self.assertEqual(loan_offer.compute_cat(0, 0.24, 24, 0, 0), 0.0)
 
     def test_term_options_are_engine_backed(self) -> None:
+        # 10,000 is a small amount -> short band, plus the offered/recommended term.
         options = loan_offer.term_options(10_000.0, apr=0.24, recommended_months=24)
-        self.assertEqual([o["months"] for o in options], [6, 12, 24, 36, 48])
+        self.assertEqual([o["months"] for o in options], [6, 12, 24])
         for option in options:
             terms = loan_offer.terms_for(10_000.0, apr=0.24, term_months=option["months"])
             self.assertEqual(option["monthlyPayment"], terms["monthlyPayment"])
@@ -113,14 +114,31 @@ class LoanOfferTest(unittest.TestCase):
         self.assertLess(options[0]["totalInterest"], options[-1]["totalInterest"])
         self.assertEqual([o["months"] for o in options if o["recommended"]], [24])
 
+    def test_allowed_terms_shrink_with_amount(self) -> None:
+        self.assertEqual(loan_offer.allowed_terms_for(8_000.0), [6, 12])
+        self.assertEqual(loan_offer.allowed_terms_for(30_000.0), [6, 12, 24])
+        self.assertEqual(loan_offer.allowed_terms_for(80_000.0), [12, 24, 36])
+        self.assertEqual(loan_offer.allowed_terms_for(200_000.0), [12, 24, 36, 48])
+
+    def test_requested_term_is_kept_and_selected(self) -> None:
+        options = loan_offer.term_options(8_000.0, recommended_months=12, requested_term=24)
+        self.assertIn(24, [o["months"] for o in options])
+        result = loan_offer.propose_offer(CONTEXT, requested_amount=8000.0, requested_term=24)
+        self.assertEqual(result["offer"]["termMonths"], 24)
+        self.assertEqual(result["recommendation"]["requested"], 24)
+        requested = [o for o in result["options"] if o["requested"]]
+        self.assertEqual(len(requested), 1)
+        self.assertTrue(requested[0]["recommended"])
+
     def test_term_options_empty_without_amount(self) -> None:
         self.assertEqual(loan_offer.term_options(0.0), [])
 
     def test_propose_offer_includes_options(self) -> None:
         result = loan_offer.propose_offer(CONTEXT, requested_amount=8000.0)
-        options = result["options"]
-        self.assertEqual(len(options), 5)
-        self.assertEqual(len([option for option in options if option["recommended"]]), 1)
+        allowed = loan_offer.allowed_terms_for(result["offer"]["amount"])
+        months = [option["months"] for option in result["options"]]
+        self.assertTrue(set(allowed).issubset(set(months)))
+        self.assertEqual(len([option for option in result["options"] if option["recommended"]]), 1)
 
     def test_recommended_term_drives_the_offer(self) -> None:
         result = loan_offer.propose_offer(
@@ -141,15 +159,15 @@ class LoanOfferTest(unittest.TestCase):
             STRONG_CONTEXT,
             accounts=STRONG_ACCOUNTS,
             payment_history=STRONG_HISTORY,
-            requested_amount=20000.0,
+            requested_amount=8000.0,
         )
         risky = loan_offer.propose_offer(
             RISKY_CONTEXT,
             accounts=RISKY_ACCOUNTS,
             payment_history=RISKY_HISTORY,
-            requested_amount=20000.0,
+            requested_amount=8000.0,
         )
-        self.assertLessEqual(strong["recommendation"]["risk"], risky["recommendation"]["risk"])
+        self.assertLess(strong["recommendation"]["risk"], risky["recommendation"]["risk"])
         self.assertNotEqual(strong["recommendation"]["months"], risky["recommendation"]["months"])
 
     def test_smaller_amount_does_not_lengthen_term(self) -> None:
