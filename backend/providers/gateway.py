@@ -7,17 +7,18 @@ primary's latency on every call after it starts failing. Every attempt is traced
 
 from __future__ import annotations
 
-import logging
 import time
 from collections.abc import Callable
 from typing import Any
+
+import structlog
 
 from observability.context import current_trace_id
 from observability.tracing import TraceEvent, Tracer, new_trace_id
 
 from .base import LLMProvider, LLMResult, Messages, ProviderUnavailableError, Tools
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class FallbackLLM:
@@ -71,10 +72,10 @@ class FallbackLLM:
             except ProviderUnavailableError as exc:
                 self._cooldown_until = self._clock() + self._cooldown_seconds
                 logger.warning(
-                    "llm failover: %s unavailable (%s); using %s",
-                    self._primary.name,
-                    exc,
-                    self._fallback.name,
+                    "llm_failover",
+                    primary=self._primary.name,
+                    error=str(exc),
+                    fallback=self._fallback.name,
                 )
         return await self._generate_with(
             self._fallback, messages, tools, response_schema, temperature

@@ -21,6 +21,9 @@ from ui_contract.catalog import CATALOG_ID
 from .model import GatewayLlm, ModelCallLimitError
 from .speech import SpeechEnricher
 from .tools import build_adk_tools
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 APP_NAME = "el_reves"
 MAX_ROUNDS = 3
@@ -97,6 +100,7 @@ class NegotiationService:
         position: dict[str, Any] | None = None,
         take_control: bool = False,
     ) -> dict[str, Any]:
+        logger.info("negotiation_round_started", session_id=session_id, take_control=take_control)
         session = await self._toolbox.call("get_session", {"session_id": session_id})
         if session.get("status") != "ok":
             return {
@@ -145,6 +149,13 @@ class NegotiationService:
         await self._toolbox.call(
             "set_session_context",
             {"session_id": session_id, "context": {"negotiation": negotiation}},
+        )
+        logger.info(
+            "negotiation_round_completed",
+            session_id=session_id,
+            actor=actor,
+            round=len(rounds),
+            surface_id=surface.get("surface_id"),
         )
         return {
             "status": "ok",
