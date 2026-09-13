@@ -8,6 +8,7 @@ answer is always synthesized to mp3.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import time
@@ -16,13 +17,14 @@ from typing import Any
 from mcp_servers.toolbox import Toolbox
 from providers.base import ChatMessage, LLMProvider, ProviderError
 from ui_contract.catalog import CATALOG
-from ui_contract.prompt import describe_components
+from ui_contract.normalize import normalize_components
 from ui_contract.validator import validate_messages
 
+from . import loans_fallback
 from .bank_context import load_bank_context
 
 CONFIDENCE_THRESHOLD = 0.80
-MAX_ATTEMPTS = 2
+
 
 LOANS_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -46,6 +48,46 @@ GREETING = (
     "Hola, soy La Mesa, tu asesor de crédito. Cuéntame qué necesitas: "
     "por ejemplo, cuánto monto buscas y para qué lo usarías."
 )
+
+# Lo terminal component set the mobile catalog implements for the loans consult.
+_LOANS_COMPONENTS = (
+    "Column",
+    "Row",
+    "Card",
+    "Text",
+    "Heading",
+    "Divider",
+    "Badge",
+    "Button",
+    "ProgressBar",
+    "List",
+    "ScenarioComparison",
+    "PlanTable",
+    "ForecastChart",
+    "LineChart",
+    "BreakAlert",
+    "LoanOffer",
+)
+
+
+def _describe_allowed() -> str:
+    lines = []
+    for name in _LOANS_COMPONENTS:
+        spec = CATALOG.components.get(name)
+        if spec is None:
+            continue
+        required = ", ".join(spec.required) if spec.required else "none"
+        props = ", ".join(f"{prop}: {token}" for prop, token in spec.props.items()) or "none"
+        lines.append(f"- {name} | required: {required} | props: {props}")
+    return "\n".join(lines)
+
+
+def _compact_credit_history(history: Any) -> dict[str, Any]:
+    """Drop raw transactions (latency) while keeping the aggregate picture."""
+    if not isinstance(history, dict):
+        return {}
+    return {key: value for key, value in history.items() if key != "recentTransactions"}
+
 
 
 def _parse_json(text: str) -> dict[str, Any]:
@@ -156,78 +198,66 @@ class LoansConsultService:
         provider: LLMProvider,
         toolbox: Toolbox,
         tracer: Any | None = None,
+        deadline_seconds: float = 4.0,
+        max_tokens: int = 900,
     ) -> None:
         self._provider = provider
         self._toolbox = toolbox
         self._tracer = tracer
+        self._deadline_seconds = deadline_seconds
+        self._max_tokens = max_tokens
 
     def _system_prompt(self, audience: dict[str, Any] | None = None) -> str:
         bank = load_bank_context()
         level = str((audience or {}).get("level") or "standard")
         directive = str((audience or {}).get("directive") or "")
+        allowed = ", ".join(_LOANS_COMPONENTS)
         lines = [
             "Eres La Mesa, un asesor de crédito para usuarios en México. Hablas en español (es-MX).",
-            "Tu objetivo es entender la necesidad del usuario y, cuando tengas suficiente "
-            "contexto, proponer una interfaz A2UI. Nunca calcules amortizaciones tú mismo.",
+            "Nunca calcules amortizaciones tú mismo. Si necesitas más información, pregunta y "
+            "devuelve terminal_response = null; solo genera terminal_response con confianza > 0.80.",
             "",
             "CONTEXTO DEL BANCO:",
             bank or "(sin contexto bancario configurado; responde de forma conservadora)",
             "",
-            "Si necesitas más información, pregunta y devuelve terminal_response = null.",
-            "Solo genera terminal_response cuando la confianza sea mayor a 0.80.",
-            "En los componentes usa placeholders {{dot.path}} para datos importantes "
-            "(por ejemplo {{analysis.scenarios.1.interestSaved}}) y coloca sus valores en data_model.",
+            "OFERTA DE CRÉDITO (obligatoria en terminal_response): recibirás una 'OFERTA DETERMINISTA' "
+            "del motor. La interfaz DEBE incluir LoanOffer con amount, apr, months, monthlyPayment, "
+            "totalInterest, totalCost, cat, schedule y action 'request_loan'. Enlaza los números con "
+            "bindings a /loan (p. ej. {\"path\": \"/loan/amount\"}, {\"path\": \"/loan/monthlyPayment\"}); "
+            "el backend ya colocó los valores en data_model bajo 'loan'. NUNCA inventes montos, tasas ni "
+            "pagos. El MONTO siempre debe aparecer.",
+            "",
+            "FORMAS OBLIGATORIAS:",
+            "- action SIEMPRE es un objeto: {\"event\": {\"name\": \"request_loan\", \"context\": {}}}, "
+            "nunca una cadena.",
+            "- Los props numéricos usan un binding {\"path\": \"/...\"} o un número literal, nunca texto.",
+            "- Placeholders {{dot.path}} solo dentro de textos.",
+            f"- Usa SOLO estos componentes: {allowed}.",
             "",
         ]
         if directive:
             lines += ["ADAPTACIÓN DE AUDIENCIA (obligatoria): " + directive, ""]
-        lines += [
-            "MANDATO DE VALOR (obligatorio). Recibirás un 'Analisis determinista' con cifras "
-            "reales del usuario. NO produzcas paneles genéricos:",
-        ]
         if level == "simple":
             lines += [
-                "- Máximo DOS secciones; lenguaje llano, frases cortas y números grandes.",
-                "- Incluye SIEMPRE LoanOffer con {{loan.amount}} y {{loan.monthlyPayment}}.",
-                "- Muestra el calendario de pagos de forma simple (PlanTable con pocas filas).",
-                "- NO incluyas CAT, DTI, panel de riesgo ni ScenarioComparison.",
-                "- Di en una frase qué crédito atacar primero, sin tasas técnicas.",
-                "- El response_text debe abrir con el monto y el pago mensual, en palabras simples.",
+                "MANDATO (audiencia simple): incluye LoanOffer y como máximo un PlanTable corto, "
+                "en lenguaje llano. NO incluyas ScenarioComparison, CAT, DTI, gráficas ni panel de riesgo.",
+                "El response_text abre con el monto y el pago mensual.",
             ]
         elif level == "detailed":
             lines += [
-                "- Incluye SIEMPRE ScenarioComparison con el plan base y al menos un plan "
-                "acelerado, mostrando interés ahorrado y meses ahorrados.",
-                "- Di qué crédito atacar primero citando acreedor y tasa (highCost/nextBestAction).",
-                "- Propón una acción concreta con monto y efecto medido (nextBestAction).",
-                "- Menciona la carga de suscripciones y la presión por quincena cuando sean relevantes.",
-                "- Usa el pronóstico/orden de pago reales (payoffOrder) en PlanTable/ForecastChart/LineChart.",
-                "- Añade CAT, DTI y el panel de riesgo completo.",
-                "- Incluye gráficas (ForecastChart/LineChart) y el calendario completo.",
-                "- El response_text debe abrir con el hallazgo más importante y específico del usuario.",
+                "MANDATO (audiencia detallada): incluye ScenarioComparison (escenarios del análisis), "
+                "PlanTable, ForecastChart, LineChart, BreakAlert (si el análisis detecta quiebre) y "
+                "LoanOffer. Añade la siguiente mejor acción con monto y efecto medido.",
+                "El response_text abre con el hallazgo más importante y específico.",
             ]
         else:
             lines += [
-                "- Incluye SIEMPRE el componente ScenarioComparison con el plan base y al menos un "
-                "plan acelerado, mostrando interés ahorrado y meses ahorrados.",
-                "- Di qué crédito atacar primero citando acreedor y tasa (highCost/nextBestAction).",
-                "- Propón una acción concreta con monto y efecto medido (nextBestAction).",
-                "- Menciona la carga de suscripciones y la presión por quincena cuando sean relevantes.",
-                "- Usa el pronóstico/orden de pago reales (payoffOrder) en PlanTable/ForecastChart/LineChart.",
-                "- El response_text debe abrir con el hallazgo más importante y específico del usuario.",
+                "MANDATO (audiencia estándar): incluye ScenarioComparison, PlanTable y LoanOffer; "
+                "menciona la siguiente mejor acción con monto y efecto medido.",
+                "El response_text abre con el hallazgo más importante y específico.",
             ]
         lines += [
-            "- Todos los datos deben derivarse del comportamiento y las tendencias del usuario; "
-            "prohibido inventar cifras o dar consejos genéricos.",
-            "",
-            "OFERTA DE CRÉDITO (obligatoria en terminal_response): recibirás una 'OFERTA "
-            "DETERMINISTA' calculada por el motor. La interfaz DEBE incluir el componente "
-            "LoanOffer con amount, apr, months, monthlyPayment, totalInterest y cat, enlazados "
-            "con placeholders a /loan (por ejemplo {{loan.amount}}, {{loan.monthlyPayment}}, "
-            "{{loan.cat}}) y con action 'request_loan'; el backend ya colocó los valores en "
-            "data_model bajo 'loan' (incluye /loan/schedule). NUNCA inventes montos, tasas ni "
-            "pagos: usa exactamente los de la OFERTA. Incluso con audiencia 'simple', el MONTO "
-            "SIEMPRE debe aparecer en LoanOffer.",
+            "- Deriva todas las cifras del análisis y de la oferta; prohibido inventar o dar consejos genéricos.",
             "",
             "Responde ÚNICAMENTE con un objeto JSON con esta forma:",
             '{"response_text": "texto para hablar", "confidence": 0.0, '
@@ -235,7 +265,7 @@ class LoansConsultService:
             '"components": [ ...A2UI flat... ], "data_model": { ... }} | null}',
             "",
             "COMPONENTES PERMITIDOS:",
-            describe_components(CATALOG),
+            _describe_allowed(),
             "",
             "ACCIONES PERMITIDAS: " + ", ".join(CATALOG.actions),
             "FORMA (v0.9, flat): cada componente es {\"id\": ..., \"component\": \"Texto\", ...props}.",
@@ -300,13 +330,15 @@ class LoansConsultService:
                 "offer": offer.get("offer", offer),
             },
         )
+        credit_history = context.get("creditHistory", {}) or {}
+        profile = credit_history.get("profile") if isinstance(credit_history, dict) else None
         messages = [
             ChatMessage(role="system", content=self._system_prompt(audience)),
             ChatMessage(
                 role="user",
                 content=(
                     "Historial de crédito del usuario (JSON):\n"
-                    + json.dumps(context.get("creditHistory", {}), ensure_ascii=False)
+                    + json.dumps(_compact_credit_history(credit_history), ensure_ascii=False)
                     + "\n\nAudiencia determinista (nivel e instrucciones de complejidad):\n"
                     + json.dumps(audience, ensure_ascii=False)
                     + "\n\nAnalisis determinista (cifras reales; úsalas, no las inventes):\n"
@@ -323,62 +355,68 @@ class LoansConsultService:
 
         parsed: dict[str, Any] | None = None
         error: str | None = None
-        valid = False
-        for attempt in range(MAX_ATTEMPTS):
-            try:
-                result = await self._provider.generate(messages, response_schema=LOANS_SCHEMA)
-                parsed = _parse_json(result.text)
-                validation = self._validate_terminal(parsed, loan_request_id)
-                if validation is None:
-                    valid = True
-                    break
+        try:
+            generated = await asyncio.wait_for(
+                self._provider.generate(
+                    messages, response_schema=LOANS_SCHEMA, max_tokens=self._max_tokens
+                ),
+                timeout=self._deadline_seconds,
+            )
+            parsed = _parse_json(generated.text)
+            validation = self._validate_terminal(parsed, loan_request_id)
+            if validation is not None:
                 error = validation
-                messages = messages + [
-                    ChatMessage(
-                        role="user",
-                        content=f"Tu respuesta no fue válida: {validation}. Corrige y responde de nuevo.",
-                    )
-                ]
-            except ProviderError as exc:
-                error = str(exc)
-                break
-            except Exception as exc:
-                error = f"{type(exc).__name__}: {exc}"
-                break
+                parsed = None
+        except (ProviderError, asyncio.TimeoutError, TimeoutError) as exc:
+            error = f"{type(exc).__name__}: {exc}"
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
 
-        if parsed is None or not valid:
-            await self._trace(started, error=error)
-            return {
-                "status": "error",
-                "error_code": "agent_error",
-                "retryable": True,
-                "message": error or "no se pudo interpretar la respuesta",
-            }
+        response_text = ""
+        confidence = 0.0
+        terminal: dict[str, Any] | None = None
+        if parsed is not None:
+            response_text = str(parsed.get("response_text") or "").strip()
+            confidence = float(parsed.get("confidence") or 0.0)
+            terminal = parsed.get("terminal_response")
 
-        response_text = str(parsed.get("response_text") or "").strip()
-        confidence = float(parsed.get("confidence") or 0.0)
-        terminal = parsed.get("terminal_response")
+        # Deterministic safety net (≤5s SLA): timeout, provider error, invalid output,
+        # or a low-confidence terminal all fall back to an engine-built interface.
+        if parsed is None or (terminal is not None and confidence <= CONFIDENCE_THRESHOLD):
+            fallback = loans_fallback.build_terminal(
+                profile=profile, audience=audience, offer=offer, analysis=analysis
+            )
+            if not response_text:
+                response_text = str(fallback.get("response_text") or "")
+            if fallback.get("terminal_response") is not None:
+                terminal = fallback["terminal_response"]
+                confidence = 1.0
+            elif parsed is None:
+                terminal = None
+
+        if not response_text:
+            response_text = "No pude generar la propuesta en este momento. Intenta de nuevo."
 
         terminal_payload: dict[str, Any] | None = None
-        if terminal and confidence > CONFIDENCE_THRESHOLD:
-            result = offer.get("offer", offer) if isinstance(offer, dict) else {}
-            terms = result.get("offer", {}) if isinstance(result, dict) else {}
+        if terminal is not None:
+            propose = offer.get("offer", offer) if isinstance(offer, dict) else {}
+            terms = propose.get("offer", {}) if isinstance(propose, dict) else {}
             terminal.setdefault("data_model", {})
             if isinstance(terminal["data_model"], dict):
                 if isinstance(audience, dict):
                     terminal["data_model"]["audience"] = audience
                 terminal["data_model"]["loan"] = {
                     **terms,
-                    "schedule": result.get("schedule", []) if isinstance(result, dict) else [],
-                    "risk": result.get("risk", {}) if isinstance(result, dict) else {},
-                    "warnings": result.get("warnings", []) if isinstance(result, dict) else [],
+                    "schedule": propose.get("schedule", []) if isinstance(propose, dict) else [],
+                    "risk": propose.get("risk", {}) if isinstance(propose, dict) else {},
+                    "warnings": propose.get("warnings", []) if isinstance(propose, dict) else [],
                 }
             persisted = await self._persist_terminal(terminal, user_id, loan_request_id)
             if persisted is not None:
                 terminal_payload = persisted
 
         audio = await self._synthesize(response_text, user_id)
-        await self._trace(started, error=None)
+        await self._trace(started, error=error)
         return {
             "status": "ok",
             "loan_request_id": loan_request_id,
@@ -399,6 +437,7 @@ class LoansConsultService:
             return None
         if not isinstance(terminal, dict) or not isinstance(terminal.get("components"), list):
             return "terminal_response debe incluir components"
+        terminal["components"] = normalize_components(terminal["components"])
         catalog_id = terminal.get("catalog_id") or CATALOG.catalog_id
         result = validate_messages(
             [

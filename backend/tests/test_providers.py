@@ -37,7 +37,7 @@ class FakeProvider:
         self.error = error
         self.calls = 0
 
-    async def generate(self, messages, tools=None, response_schema=None, temperature=None) -> LLMResult:
+    async def generate(self, messages, tools=None, response_schema=None, temperature=None, max_tokens=None) -> LLMResult:
         self.calls += 1
         if self.error is not None:
             raise self.error
@@ -334,7 +334,9 @@ class DeepSeekTest(unittest.TestCase):
             client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
             provider = DeepSeekLLM(api_key="test", model="deepseek-flash", client=client)
             try:
-                result = await provider.generate([ChatMessage(role="user", content="hola")])
+                result = await provider.generate(
+                    [ChatMessage(role="user", content="hola")], max_tokens=900
+                )
             finally:
                 await client.aclose()
 
@@ -344,6 +346,7 @@ class DeepSeekTest(unittest.TestCase):
             self.assertEqual(result.usage.total_tokens, 15)
             self.assertEqual(result.provider, "deepseek")
             self.assertEqual(seen["payload"]["model"], "deepseek-flash")
+            self.assertEqual(seen["payload"]["max_tokens"], 900)
             self.assertEqual(seen["payload"]["thinking"], {"type": "disabled"})
 
         asyncio.run(run())

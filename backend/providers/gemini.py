@@ -88,6 +88,7 @@ def _to_config(
     tools: Tools | None,
     response_schema: dict[str, Any] | None,
     temperature: float | None,
+    max_tokens: int | None = None,
 ) -> Any:
     from google.genai import types
 
@@ -113,6 +114,8 @@ def _to_config(
         kwargs["response_json_schema"] = response_schema
     if temperature is not None:
         kwargs["temperature"] = temperature
+    if max_tokens is not None:
+        kwargs["max_output_tokens"] = max_tokens
     return types.GenerateContentConfig(**kwargs)
 
 
@@ -165,8 +168,9 @@ class GeminiLLM:
         tools: Tools | None = None,
         response_schema: dict[str, Any] | None = None,
         temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> LLMResult:
-        config = _to_config(messages, tools, response_schema, temperature)
+        config = _to_config(messages, tools, response_schema, temperature, max_tokens)
         try:
             response = await self._client.aio.models.generate_content(
                 model=self.model, contents=_to_contents(messages), config=config

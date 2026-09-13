@@ -80,4 +80,5 @@ class LLMProvider(Protocol):
         tools: Tools | None = None,
         response_schema: dict[str, Any] | None = None,
         temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> LLMResult: ...

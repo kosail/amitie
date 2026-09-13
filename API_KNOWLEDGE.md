@@ -104,6 +104,11 @@ catalog and attach speech automatically. Do not add a toggle. Independently,
 every user gets a `/audience` level (`simple`/`standard`/`detailed`) that drives
 content complexity (see §3).
 
+> **Demo personas:** `demo`/`u_ana` is over-indebted and therefore **not eligible**
+> for a new loan — the consult returns an explanatory `response_text` with
+> `terminal_response: null` (no offer to render). To showcase a real `LoanOffer`,
+> use `roberto` or `sofia` (and `carmen` for a simple UI).
+
 ### `POST /api/session` (no-auth alternative)
 
 Request: `{ "user_id": "u_ana" }` → `{ "session_id": "sess_…", "user_id": "u_ana" }`.
@@ -347,6 +352,24 @@ history). Its action is `request_loan`.
   insurance, **not** the official Banxico CAT — label it "CAT (aproximado)".
 - **Do not create the loan on render.** Only when the user explicitly accepts,
   call `POST /api/loans`.
+
+**Terminal component set.** A loans terminal uses only components the mobile
+catalog implements: `Column, Row, Card, Text, Heading, Divider, Badge, Button,
+ProgressBar, List, ScenarioComparison, PlanTable, ForecastChart, LineChart,
+BreakAlert, LoanOffer`. Item shapes:
+- `ScenarioComparison.scenarios`: `{label, monthlyPayment, payoffMonths, totalInterest, interestSaved?, monthsSaved?}[]` (+ optional `highlightIndex`, `title`).
+- `PlanTable.months`: `{month, totalBalance, payment, interest, cash}[]` (+ optional `breakMonth`).
+- `ForecastChart`: `forecast: {period, value}[]`, `actual?: {period, value}[]`, `title?`.
+- `LineChart`: `points: {label, value}[]` (+ `title?`, `yLabel?`).
+- `BreakAlert`: `month, shortfall, reasons?: string[], assumptions?: string[]`.
+Do not render unknown component types (the client ignores them).
+
+**Errors & latency.** A consult always answers within ~5 s. If it returns
+`status:"error"`, show the Spanish `message` (map `error_code`) and a retry when
+`retryable` — never silently ignore it. On LLM timeout/provider failure the
+backend already degrades to an engine-built terminal, so a missing
+`terminal_response` with ordinary `response_text` is a valid (intake or
+not-eligible) turn.
 
 **Risk panel** — read it from `updateDataModel.value.loan.risk` (and top-level
 `.../loan/warnings: string[]`) to show *why* the offer is what it is (display only;

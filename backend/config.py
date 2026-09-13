@@ -94,6 +94,10 @@ class Settings:
     loan_opening_fee_pct: float = 0.02
     loan_insurance_fee_pct: float = 0.01
     loan_dti_cap: float = 0.35
+    # Loans consult latency budget: the LLM call is hard-capped and falls back
+    # to a deterministic engine-built terminal so a consult never exceeds ~5s.
+    loans_llm_deadline_seconds: float = 4.0
+    loans_max_tokens: int = 900
 
     agent_max_model_calls: int = 10
 
@@ -136,5 +140,7 @@ class Settings:
             loan_opening_fee_pct=_as_float("LOAN_OPENING_FEE_PCT", "0.02"),
             loan_insurance_fee_pct=_as_float("LOAN_INSURANCE_FEE_PCT", "0.01"),
             loan_dti_cap=_as_float("LOAN_DTI_CAP", "0.35"),
+            loans_llm_deadline_seconds=_as_float("LOANS_LLM_DEADLINE_SECONDS", "4.0"),
+            loans_max_tokens=_as_int("LOANS_MAX_TOKENS", "900"),
             agent_max_model_calls=_as_int("AGENT_MAX_MODEL_CALLS", "10"),
         )

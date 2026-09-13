@@ -18,7 +18,7 @@ class GoodLLM:
     name = "gemini"
     model = "gemini-2.5-flash"
 
-    async def generate(self, messages, tools=None, response_schema=None, temperature=None):
+    async def generate(self, messages, tools=None, response_schema=None, temperature=None, max_tokens=None):
         return LLMResult(text="pong", tool_calls=(), usage=Usage(), provider=self.name, model=self.model)
 
 
@@ -26,7 +26,7 @@ class BadLLM:
     name = "deepseek"
     model = "deepseek-flash"
 
-    async def generate(self, messages, tools=None, response_schema=None, temperature=None):
+    async def generate(self, messages, tools=None, response_schema=None, temperature=None, max_tokens=None):
         raise ProviderUnavailableError("no key")
 
 

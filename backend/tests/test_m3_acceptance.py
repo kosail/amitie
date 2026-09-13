@@ -80,7 +80,7 @@ class ScriptedProvider:
     def __init__(self, results: list[LLMResult]) -> None:
         self._results = list(results)
 
-    async def generate(self, messages, tools=None, response_schema=None, temperature=None):
+    async def generate(self, messages, tools=None, response_schema=None, temperature=None, max_tokens=None):
         if not self._results:
             return text_result("(sin guion)")
         return self._results.pop(0)
