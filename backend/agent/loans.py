@@ -48,7 +48,7 @@ LOANS_SCHEMA: dict[str, Any] = {
 }
 
 GREETING = (
-    "Hola, soy La Mesa, tu asesor de crédito. Cuéntame qué necesitas: "
+    "Hola, soy Luna, tu asesora de crédito. Cuéntame qué necesitas: "
     "por ejemplo, cuánto monto buscas y para qué lo usarías."
 )
 
@@ -216,7 +216,9 @@ class LoansConsultService:
         directive = str((audience or {}).get("directive") or "")
         allowed = ", ".join(_LOANS_COMPONENTS)
         lines = [
-            "Eres La Mesa, un asesor de crédito para usuarios en México. Hablas en español (es-MX).",
+            "Eres Luna, una asesora de crédito para usuarios en México. Hablas en español (es-MX). "
+            "Tu nombre es Luna. Eres femenina; si te presentas o te refieres a ti misma usa el "
+            "femenino (p. ej. \"soy tu asesora\"). No digas tu nombre salvo que sea necesario.",
             "Nunca calcules amortizaciones tú mismo. Si necesitas más información, pregunta y "
             "devuelve terminal_response = null; solo genera terminal_response con confianza > 0.80.",
             "",

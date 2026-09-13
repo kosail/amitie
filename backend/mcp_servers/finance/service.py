@@ -950,7 +950,7 @@ async def create_loan(
                     terms["amount"],
                     "in",
                     "loan_disbursement",
-                    "Crédito La Mesa",
+                    "Crédito personal",
                     0,
                 ),
             )

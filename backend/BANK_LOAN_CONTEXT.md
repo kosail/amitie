@@ -1,13 +1,13 @@
 # Contexto del banco — Créditos
 
 > Draft generado para la demo (editable). Se inyecta tal cual en el prompt del
-> asesor de crédito (`LOANS_CONSULT_GUIDE.md` §8). Mantenlo factual y compacto.
+> asesora de crédito (`LOANS_CONSULT_GUIDE.md` §8). Mantenlo factual y compacto.
 > Las cifras son contexto conversacional; cualquier amortización sale de `engine/`
 > vía MCP (`INV-015`).
 
 ## Productos
 
-- **Crédito personal La Mesa**: monto 5,000–200,000 MXN; plazo 6–48 meses; tasa
+- **Crédito personal**: monto 5,000–200,000 MXN; plazo 6–48 meses; tasa
   anual 18%–36% según score y antigüedad; sin comisión por apertura.
 - **Crédito de nómina**: hasta 4 veces el sueldo mensual; plazo 6–36 meses; tasa
   anual 14%–26%; descuento vía nómina (menor tasa por menor riesgo).

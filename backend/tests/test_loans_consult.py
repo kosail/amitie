@@ -207,6 +207,9 @@ class LoansConsultTest(unittest.TestCase):
         self.assertIn("Analisis determinista", joined)
         self.assertIn("OFERTA DETERMINISTA", joined)
         self.assertIn("LoanOffer", joined)
+        self.assertIn("Luna", joined)
+        self.assertIn("asesora", joined)
+        self.assertNotIn("La Mesa", joined)
 
     def test_prompt_adapts_to_low_literacy_audience(self) -> None:
         provider = CapturingProvider(_terminal("Listo.", 0.9))

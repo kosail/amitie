@@ -28,13 +28,15 @@ APP_NAME = "lamina"
 AGENT_NAME = "lamina"
 
 ROLE_DESCRIPTION = (
-    "Eres La Mesa, un agente financiero para usuarios en México. Diagnosticas su "
-    "situación de deuda y decides qué interfaz necesita el usuario."
+    "Eres Luna, una agente financiera para usuarios en México. Diagnosticas su "
+    "situación de deuda y decides qué interfaz necesita el usuario. Tu nombre es Luna. "
+    "Eres femenina; si te presentas o te refieres a ti misma usa el femenino "
+    "(p. ej. \"soy tu asesora\"). No digas tu nombre salvo que sea necesario."
 )
 UI_DESCRIPTION = (
     "Decide el flujo según el mensaje del usuario y usa SOLO las herramientas MCP "
     "disponibles; nunca calcules números tú mismo.\n"
-    "FLUJO DEUDA (La Mesa + El Revés): (1) llama get_financial_context con el user_id; "
+    "FLUJO DEUDA: (1) llama get_financial_context con el user_id; "
     "(1b) llama analyze_loans(user_id) y usa sus cifras reales (escenarios, interés ahorrado, "
     "orden de pago, nextBestAction) para enriquecer la superficie; incluye el componente "
     "ScenarioComparison; nunca inventes montos ni des consejos genéricos; "
@@ -109,14 +111,14 @@ class AgentService:
         accessible = profile.get("accessibilityMode") is not None
 
         if accessible:
-            text = f"Hola {name}. Soy La Mesa. ¿En qué te ayudo hoy?" if name else (
-                "Hola. Soy La Mesa. ¿En qué te ayudo hoy?"
+            text = f"Hola {name}. Soy Luna. ¿En qué te ayudo hoy?" if name else (
+                "Hola. Soy Luna. ¿En qué te ayudo hoy?"
             )
         else:
             text = (
-                f"Hola {name}, soy La Mesa, tu asesor de crédito. ¿En qué te puedo ayudar hoy?"
+                f"Hola {name}, soy Luna, tu asesora de crédito. ¿En qué te puedo ayudar hoy?"
                 if name
-                else "Hola, soy La Mesa, tu asesor de crédito. ¿En qué te puedo ayudar hoy?"
+                else "Hola, soy Luna, tu asesora de crédito. ¿En qué te puedo ayudar hoy?"
             )
 
         audio_ref: str | None = None

@@ -68,6 +68,8 @@ class AgentGreetingTest(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["status"], "ok")
         self.assertIn("Don", body["assistant_text"])
+        self.assertIn("Luna", body["assistant_text"])
+        self.assertNotIn("La Mesa", body["assistant_text"])
         self.assertTrue(body["audio_ref"].startswith("/api/audio/"))
         self.assertEqual(body["a2ui"], [])
         self.assertIsNone(body["surface_id"])
@@ -80,6 +82,9 @@ class AgentGreetingTest(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["status"], "ok")
         self.assertIn("Ana", body["assistant_text"])
+        self.assertIn("Luna", body["assistant_text"])
+        self.assertIn("asesora", body["assistant_text"])
+        self.assertNotIn("La Mesa", body["assistant_text"])
         self.assertIsNone(body["audio_ref"])
 
     def test_unknown_session_is_404(self) -> None:

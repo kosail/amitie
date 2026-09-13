@@ -34,7 +34,7 @@ router = APIRouter(tags=["debug"])
 
 _LLM_PROMPT = "Responde únicamente con la palabra: pong"
 _RESEARCH_QUERY = "costo promedio en MXN de un vuelo redondo a Japón desde CDMX"
-_TTS_TEXT = "Hola, esta es una prueba de voz de La Mesa."
+_TTS_TEXT = "Hola, esta es una prueba de voz de Luna."
 _PROBE_TIMEOUT = 25.0
 
 

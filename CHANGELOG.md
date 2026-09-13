@@ -579,3 +579,13 @@
 - rationale: The Asistente tab had no way to speak first — the only initial turn logic required an `intent` param, so a plain tab open produced no `/api/message` and no greeting audio. A dedicated deterministic endpoint (parallel to `/api/loans/greeting`) is faster and more reliable than abusing the agent with a synthetic message, and keeps audio generation behind the voice MCP.
 - impact: Suite extended with `test_agent_greeting.py` (accessible → `audio_ref`; standard → none; unknown session → 404). The frontend calls it on the Asistente tab open (see the frontend repo's `add-assistant-initial-greeting` change).
 - follow_ups: Frontend wiring + auto-play; live verification with the real Piper/ElevenLabs chain.
+
+## [2026-09-13] change — the assistant's name is now Luna (feminine)
+- agent: opencode / deepseek-flash
+- requirements: none (branding/persona)
+- invariants: none
+- files: `backend/agent/service.py`, `backend/agent/loans.py`, `backend/api/routers/debug.py`, `backend/BANK_LOAN_CONTEXT.md`, `backend/mcp_servers/finance/service.py`, `backend/tests/test_agent_greeting.py`, `backend/tests/test_loans_consult.py`
+- decision: Renamed the AI persona from "La Mesa" to "Luna" in the AI-facing code only, and made all self-reference feminine. `ROLE_DESCRIPTION` and the loans `_system_prompt` now say "Eres Luna, una agente/asesora…" plus an explicit identity line ("Tu nombre es Luna. Eres femenina; si te presentas usa el femenino…"), the deterministic and loans greetings say "Soy Luna, tu asesora de crédito", the debug TTS sample says Luna, and the injected `BANK_LOAN_CONTEXT.md` product is now "Crédito personal" (disbursement label likewise). The internal flow label dropped to "FLUJO DEUDA".
+- rationale: The product chose a unique feminine assistant name; keeping the change to persona/prompt strings avoids churn in app metadata, docs, and internal identifiers while ensuring the model never introduces itself as any other name.
+- impact: Backend suite extended with persona assertions (`test_agent_greeting.py`, `test_loans_consult.py`); full suite 216 passing. Explicitly unchanged: `APP_NAME`/`AGENT_NAME="lamina"`, the FastAPI title/description and their swagger tests, docs/CHANGELOGs, the research sub-prompt.
+- follow_ups: None.
