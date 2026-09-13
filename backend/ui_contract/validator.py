@@ -193,6 +193,16 @@ class CatalogValidator:
             }
             parsed.append((component_id, component_type, props, entry_location))
 
+        # The client renders the surface starting from the component with the
+        # literal id "root" (A2UI server_to_client: one component MUST have id
+        # "root"). Without it the interface is never displayed, so reject here to
+        # let the agent self-correct within the persist_ui retry loop.
+        if "root" not in ids:
+            issues.append(
+                f"{location}: components must include a component with id 'root' "
+                "(the client's required surface entry point)"
+            )
+
         for component_id, component_type, props, entry_location in parsed:
             spec = catalog.components[component_type]
             for required in spec.required:

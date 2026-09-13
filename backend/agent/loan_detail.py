@@ -449,6 +449,9 @@ class LoanDetailService:
             _describe_allowed(),
             "ACCIONES PERMITIDAS: " + ", ".join(CATALOG.actions),
             "FORMA (v0.9, flat): cada componente es {\"id\": ..., \"component\": \"Text\", ...props}.",
+            "RAÍZ OBLIGATORIA: exactamente UN componente debe tener \"id\": \"root\"; es el nodo que el "
+            "cliente dibuja primero y del que cuelga todo lo demás vía children/child. Sin un componente "
+            "\"root\" la interfaz NO se muestra.",
         ]
         return "\n".join(lines)
 

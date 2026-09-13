@@ -94,6 +94,59 @@ def normalize_components(
     return [normalize_component(component, catalog) for component in components]
 
 
+def ensure_root(components: Any) -> Any:
+    """Guarantee a renderable tree: the client starts at the component with the
+    literal id ``"root"`` and renders nothing without it (A2UI server_to_client:
+    one component MUST have id "root").
+
+    Deterministic repair used before persistence (INV-015). If no ``"root"``
+    exists: a single top-level component is renamed to ``"root"`` (it is
+    unreferenced, so renaming is safe); multiple top-level components are wrapped
+    in a synthetic ``"root"`` Column. A malformed graph with no top-level
+    component (a cycle) is returned untouched so the structural validator reports
+    it. Pure: never mutates its input.
+    """
+    if not isinstance(components, list) or not components:
+        return components
+
+    ids = {component.get("id") for component in components if isinstance(component, dict)}
+    if "root" in ids:
+        return components
+
+    referenced: set[str] = set()
+    for component in components:
+        if not isinstance(component, dict):
+            continue
+        children = component.get("children")
+        if isinstance(children, list):
+            referenced.update(child for child in children if isinstance(child, str))
+        child = component.get("child")
+        if isinstance(child, str):
+            referenced.add(child)
+
+    top_level = [
+        component.get("id")
+        for component in components
+        if isinstance(component, dict)
+        and isinstance(component.get("id"), str)
+        and component.get("id") not in referenced
+    ]
+    if not top_level:
+        return components
+    if len(top_level) == 1:
+        sole = top_level[0]
+        return [
+            {**component, "id": "root"}
+            if isinstance(component, dict) and component.get("id") == sole
+            else component
+            for component in components
+        ]
+    return [
+        {"id": "root", "component": "Column", "gap": 12, "children": list(top_level)},
+        *components,
+    ]
+
+
 def normalize_terminal(terminal: Mapping[str, Any], catalog: Catalog = CATALOG) -> dict[str, Any]:
     """Return a copy of a terminal_response with normalized components."""
     if not isinstance(terminal, Mapping):

@@ -1,6 +1,6 @@
 import unittest
 
-from ui_contract.normalize import normalize_component, normalize_components
+from ui_contract.normalize import ensure_root, normalize_component, normalize_components
 
 
 class NormalizeTest(unittest.TestCase):
@@ -46,6 +46,47 @@ class NormalizeTest(unittest.TestCase):
         result = normalize_components(components)
         self.assertEqual(result[0]["amount"], "{{loan.amount}}")
         self.assertEqual(result[1]["amount"], {"path": "/loan/amount"})
+
+
+class EnsureRootTest(unittest.TestCase):
+    def test_existing_root_is_untouched(self) -> None:
+        components = [
+            {"id": "root", "component": "Column", "children": ["t"]},
+            {"id": "t", "component": "Text", "text": "hola"},
+        ]
+        self.assertIs(ensure_root(components), components)
+
+    def test_single_top_level_is_renamed(self) -> None:
+        components = [
+            {"id": "title", "component": "Heading", "text": "Hola"},
+        ]
+        result = ensure_root(components)
+        self.assertEqual([c["id"] for c in result], ["root"])
+        self.assertEqual(result[0]["component"], "Heading")
+
+    def test_multiple_top_level_are_wrapped(self) -> None:
+        components = [
+            {"id": "a", "component": "Text", "text": "a"},
+            {"id": "b", "component": "Text", "text": "b"},
+        ]
+        result = ensure_root(components)
+        self.assertEqual(result[0]["id"], "root")
+        self.assertEqual(result[0]["component"], "Column")
+        self.assertEqual(result[0]["children"], ["a", "b"])
+        self.assertEqual(len(result), 3)
+
+    def test_child_references_are_not_treated_as_top_level(self) -> None:
+        components = [
+            {"id": "root", "component": "Column", "children": ["t"]},
+            {"id": "t", "component": "Text", "text": "hola"},
+        ]
+        # root exists, so this is a no-op regardless of top-level detection.
+        self.assertEqual(ensure_root(components), components)
+
+    def test_does_not_mutate_input(self) -> None:
+        components = [{"id": "title", "component": "Heading", "text": "Hola"}]
+        ensure_root(components)
+        self.assertEqual(components[0]["id"], "title")
 
 
 if __name__ == "__main__":

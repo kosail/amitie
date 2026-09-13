@@ -47,6 +47,9 @@ def build_system_prompt(
             f"- Do not render UI in text. Your final step MUST be a call to the {terminal_tool} tool.",
             f"- Call {terminal_tool} with: domain, entity_id, catalog_id={catalog.catalog_id!r}, "
             "components (an A2UI adjacency list), and data_model (an object).",
+            "- Exactly ONE component must have \"id\": \"root\" — this is the entry point the client "
+            "renders first. Every other component MUST be reachable from \"root\" via children/child. "
+            "A surface with no component whose id is \"root\" is never displayed to the user.",
             "- Components must follow the exact prop names above. Unknown components or props are "
             "rejected and the call will fail.",
             "",

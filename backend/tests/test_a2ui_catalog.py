@@ -124,8 +124,31 @@ class CatalogValidatorTest(unittest.TestCase):
             {"id": "c", "component": "ForecastChart", "forecast": [{"period": "m1", "value": 1}]},
             {"id": "c", "component": "ScenarioComparison", "scenarios": [{"label": "Base", "monthlyPayment": 7850, "payoffMonths": 41, "totalInterest": 1}]},
         ):
-            result = self.validator.validate(_with_component(component))
+            # The client renders from "root", so every real payload carries one.
+            payload = [
+                {"version": "v0.9", "createSurface": {"surfaceId": "s", "catalogId": CATALOG_ID}},
+                {
+                    "version": "v0.9",
+                    "updateComponents": {
+                        "surfaceId": "s",
+                        "components": [
+                            {"id": "root", "component": "Column", "children": ["c"]},
+                            component,
+                        ],
+                    },
+                },
+            ]
+            result = self.validator.validate(payload)
             self.assertTrue(result.ok, (component["component"], result.issues))
+
+    def test_missing_root_rejected(self) -> None:
+        result = self.validator.validate(
+            _with_component(
+                {"id": "c", "component": "LineChart", "points": [{"label": "m1", "value": 1}]}
+            )
+        )
+        self.assertFalse(result.ok)
+        self.assertTrue(any("root" in issue for issue in result.issues), result.issues)
 
     def test_unknown_component_rejected(self) -> None:
         result = self.validator.validate(_with_component({"id": "x", "component": "Bogus"}))

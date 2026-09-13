@@ -1,4 +1,5 @@
 import asyncio
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -126,6 +127,38 @@ class UiToolsTest(unittest.TestCase):
                     value = data_message["updateDataModel"]["value"]
                     self.assertEqual(value["liabilities"][0]["balance"], 50000.0)
                     self.assertEqual(value["totals"]["debt"], 50000.0 + 35000.0 + 22000.0 + 15000.0 + 7200.0)
+
+                await database.close()
+
+            asyncio.run(run())
+
+    def test_persist_repairs_missing_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            database = LocalSQLiteDatabase(Path(tmp) / "ui.sqlite3")
+
+            async def run() -> None:
+                await apply_schema(database)
+                await seed(database)
+                server = build_ui_server(database)
+
+                async with InProcessToolbox({"ui": server}) as toolbox:
+                    persisted = await toolbox.call(
+                        "persist_ui",
+                        {
+                            "user_id": "u_ana",
+                            "domain": "loans_credits",
+                            "catalog_id": CATALOG_ID,
+                            "components": [{"id": "title", "component": "Heading", "text": "Hola"}],
+                            "data_model": {},
+                        },
+                    )
+                    self.assertEqual(persisted["status"], "ok", persisted.get("issues"))
+                    row = await database.fetch_one(
+                        "SELECT template_json FROM generated_ui WHERE id = ?",
+                        (persisted["surface_id"],),
+                    )
+                    stored = json.loads(row["template_json"])
+                    self.assertTrue(any(c.get("id") == "root" for c in stored))
 
                 await database.close()
 

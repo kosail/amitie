@@ -29,6 +29,8 @@ All payloads are JSON arrays of messages, each carrying `"version": "v0.9"`:
 
 Components use the A2UI v0.9 **flat adjacency-list** model: a flat list where each entry is `{ "id": string, "component": "<Type>", ...props }` — the type is a **string** and its props are siblings. (The v0.8 nested form `{ "component": { "<Type>": { ... } } }` is **not** used.)
 
+**Root requirement:** exactly one component in an `updateComponents` list MUST have `"id": "root"`; it is the entry point the client renders first, and every other component must be reachable from it via `children`/`child`. A surface without a `root` component is never displayed (per the A2UI `server_to_client` schema). The backend enforces this: `CatalogValidator` rejects a payload with no `root`, and `persist_ui` deterministically repairs one that omits it before persistence.
+
 ## 3. Data binding
 
 - Any prop value may be a literal or a JSON-Pointer binding: `{ "path": "/liabilities/0/balance" }`.

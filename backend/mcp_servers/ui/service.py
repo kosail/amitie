@@ -11,14 +11,19 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+import structlog
+
 from db.port import DatabasePort
 from hydration.service import hydrate_components
 from hydration.speech import speech_text
 from ui_contract.catalog import CATALOG_ID, VOZ_COLOR_ID
+from ui_contract.normalize import ensure_root
 from ui_contract.validator import validate_messages
 
 from ..finance import service as finance_service
 from ..voice.service import text_hash as speech_hash
+
+logger = structlog.get_logger(__name__)
 
 _VERSION = "v0.9"
 _INACCESSIBLE_MODES = {"", "none", "null", "standard", "normal"}
@@ -140,6 +145,14 @@ async def persist_ui(
     simulation: dict[str, Any] | None = None,
     speech: str = "",
 ) -> dict[str, Any]:
+    # The client renders from the component whose id is "root"; repair a payload
+    # that omitted it (deterministically) so a surface is never persisted blank.
+    if not any(isinstance(c, dict) and c.get("id") == "root" for c in components):
+        components = ensure_root(components)
+        logger.info(
+            "ui_root_repaired", user_id=user_id, domain=domain, entity_id=entity_id
+        )
+
     profile = await _accessibility_profile(database, user_id)
     audience = await finance_service.get_audience(database, user_id)
     # The accessible (color/emoji, TTS-first) catalog is automatic: an explicit
